@@ -1,32 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script>
-  if (localStorage.getItem('userRole') !== 'teacher') {
-    window.location.href = '/login.html';
-  }
-</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Teacher Dashboard - Semester 5</title>
+  <title>Teacher Panel - BIRT Attendance</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f7f6; margin: 20px; }
-    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    button { padding: 12px 20px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
+    body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 20px; }
+    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    .btn-start { background-color: #28a745; color: white; margin-right: 10px; }
+    .btn-clear { background-color: #dc3545; color: white; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-    th { background: #007bff; color: white; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background-color: #007bff; color: white; }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <h2>👨‍🏫 Teacher Panel (Semester 5)</h2>
-    <button onclick="startClass()">📍 Start Attendance Session</button>
-    <button onclick="clearData()" style="background-color: #dc3545; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; margin-top: 10px;">
-  🗑️ Clear Session Attendance Data
-</button>
-    <p id="statusMsg"></p>
+    <h2>🎓 Teacher Panel (Semester 5)</h2>
+    <button class="btn-start" onclick="startClass()">📍 Start Attendance Session</button>
+    <button class="btn-clear" onclick="clearData()">🗑️ Clear Session Attendance Data</button>
+    <p id="statusMsg" style="margin-top: 10px; font-weight: bold;"></p>
   </div>
 
   <div class="card">
@@ -34,7 +29,7 @@
     <table>
       <thead>
         <tr>
-          <th>Roll Number</th>
+          <th>Student ID</th>
           <th>Semester</th>
           <th>Session Slot</th>
           <th>Time Stamp</th>
@@ -42,46 +37,25 @@
         </tr>
       </thead>
       <tbody id="attendanceTable">
-        <tr><td colspan="5">Loading...</td></tr>
+        <!-- Records will load dynamically -->
       </tbody>
     </table>
   </div>
 
   <script>
-    function startClass() {
-      if (!navigator.geolocation) return alert("Geolocation not supported!");
-      navigator.geolocation.getCurrentPosition(async (pos) => {
-        const res = await fetch('/api/session/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        });
-        const data = await res.json();
-        document.getElementById('statusMsg').innerText = "✅ " + data.message;
-      });
-    }
-
-    async function fetchRecords() {
-      const res = await fetch('/api/attendance/list');
-      const data = await res.json();
-      const tbody = document.getElementById('attendanceTable');
-      tbody.innerHTML = '';
-      if(data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">No records yet</td></tr>';
-        return;
+    async function clearData() {
+      if (confirm("Kya aap sure hain ki aap current session ka attendance data delete karna chahte hain?")) {
+        try {
+          const res = await fetch('/api/attendance/clear-all', { method: 'DELETE' });
+          const data = await res.json();
+          alert(data.message);
+          location.reload();
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
       }
-      data.forEach(item => {
-        tbody.innerHTML += `<tr>
-          <td><b>${item.studentId}</b></td>
-          <td>${item.semester}</td>
-          <td><b>${item.sessionType}</b></td>
-          <td>${new Date(item.timestamp).toLocaleTimeString()}</td>
-          <td><span style="color:green;font-weight:bold;">${item.status}</span></td>
-        </tr>`;
-      });
     }
-
-    setInterval(fetchRecords, 3000);
   </script>
+  <script src="script.js"></script>
 </body>
 </html>
