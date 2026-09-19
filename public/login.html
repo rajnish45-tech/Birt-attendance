@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - BIRT Attendance</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1e293b;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .login-card {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      width: 320px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+    }
+    .error { color: red; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div class="login-card">
+    <h2>🔒 Staff Portal Login</h2>
+    <select id="role">
+      <option value="teacher">👨‍🏫 Teacher</option>
+      <option value="hod">🏛️ HOD</option>
+    </select>
+    <input type="password" id="password" placeholder="Enter Password">
+    <button onclick="handleLogin()">Login</button>
+    <p id="errorMsg" class="error"></p>
+  </div>
+
+  <script>
+    function handleLogin() {
+      const role = document.getElementById('role').value;
+      const pass = document.getElementById('password').value;
+      const errorMsg = document.getElementById('errorMsg');
+
+      // Simple Security Logic
+      if (role === 'teacher' && pass === 'teacher123') {
+        localStorage.setItem('userRole', 'teacher');
+        window.location.href = '/teacher.html';
+      } else if (role === 'hod' && pass === 'hod123') {
+        localStorage.setItem('userRole', 'hod');
+        window.location.href = '/hod.html';
+      } else {
+        errorMsg.innerText = "Incorrect Password!";
+      }
+    }
+  </script>
+</body>
+</html>

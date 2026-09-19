@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Attendance Portal</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0;
+      color: #333;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+      text-align: center;
+      width: 320px;
+    }
+    input {
+      width: 90%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+    button {
+      width: 98%;
+      padding: 12px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    button:disabled { background-color: #cccccc; }
+    #status { margin-top: 15px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>🎓 Student Attendance</h2>
+    <input type="text" id="studentId" placeholder="Enter Roll Number" required>
+    <button id="markBtn" onclick="submitAttendance()">Mark Attendance</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    async function submitAttendance() {
+      const studentId = document.getElementById('studentId').value.trim();
+      const statusDiv = document.getElementById('status');
+      const btn = document.getElementById('markBtn');
+
+      if (!studentId) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Kripya Roll Number enter karein!";
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        statusDiv.style.color = "red";
+        statusDiv.innerText = "Aapke browser me Geolocation support nahi hai!";
+        return;
+      }
+
+      statusDiv.style.color = "blue";
+      statusDiv.innerText = "Location verify ho rahi hai...";
+      btn.disabled = true;
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const userLat = position.coords.latitude;
+          const userLng = position.coords.longitude;
+
+          try {
+            const response = await fetch('/api/attendance/mark', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ studentId, userLat, userLng })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+              statusDiv.style.color = "green";
+              statusDiv.innerText = "✅ " + data.message;
+            } else {
+              statusDiv.style.color = "red";
+              statusDiv.innerText = "❌ " + data.message;
+            }
+          } catch (error) {
+            statusDiv.style.color = "red";
+            statusDiv.innerText = "Server error! Dobara try karein.";
+          } finally {
+            btn.disabled = false;
+          }
+        },
+        (error) => {
+          statusDiv.style.color = "red";
+          statusDiv.innerText = "Location Access Denied! Kripya GPS allow karein.";
+          btn.disabled = false;
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+  </script>
+</body>
+</html>
