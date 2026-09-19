@@ -132,3 +132,13 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Mobile Access URL: http://YOUR_PC_IP:${PORT}`);
 });
+
+// Clear all attendance records (Teacher / HOD Action)
+app.delete('/api/attendance/clear-all', async (req, res) => {
+  try {
+    await Attendance.deleteMany({});
+    res.json({ success: true, message: 'Purana attendance data safalta-purvak delete ho gaya hai!' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Data delete karne me error aaya: ' + err.message });
+  }
+});
