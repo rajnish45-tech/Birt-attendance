@@ -30,7 +30,7 @@
     <table>
       <thead>
         <tr>
-          <th>Student ID</th>
+          <th>Student ID / Roll No</th>
           <th>Semester</th>
           <th>Session Slot</th>
           <th>Time Stamp</th>
@@ -49,19 +49,24 @@
   </div>
 
   <script>
-    // Page load hote hi attendance data fetch karein
-    document.addEventListener('DOMContentLoaded', fetchTeacherAttendance);
+    // Page load hote hi HOD style me attendance fetch karein
+    document.addEventListener('DOMContentLoaded', fetchAttendance);
 
-    async function fetchTeacherAttendance() {
+    async function fetchAttendance() {
       try {
-        const res = await fetch('/api/attendance');
+        // Multi-route fallback: pehle /api/attendance try karo, agar error aaye toh /api/attendance/all
+        let res = await fetch('/api/attendance');
+        if (!res.ok) {
+          res = await fetch('/api/attendance/all');
+        }
+        
         const records = await res.json();
-
         const tbody = document.getElementById('attendanceTable');
         const studentCountEl = document.getElementById('studentCount');
+        
         tbody.innerHTML = '';
 
-        if (!records || records.length === 0) {
+        if (!records || !Array.isArray(records) || records.length === 0) {
           tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Koi attendance record nahi mila.</td></tr>';
           studentCountEl.innerText = '0';
           return;
@@ -69,12 +74,20 @@
 
         records.forEach(item => {
           const tr = document.createElement('tr');
+          
+          // Flexible key fallback (Roll No / Student ID / Name)
+          const id = item.studentId || item.rollNo || item.rollNumber || item.name || 'N/A';
+          const sem = item.semester || item.sem || 'Semester 5';
+          const slot = item.sessionSlot || item.slot || 'Morning';
+          const time = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : (item.time || 'N/A');
+          const status = item.status || 'Present';
+
           tr.innerHTML = `
-            <td>${item.studentId || item.rollNo || 'N/A'}</td>
-            <td>${item.semester || 'Semester 5'}</td>
-            <td>${item.slot || item.sessionSlot || 'Morning'}</td>
-            <td>${item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : (item.time || 'N/A')}</td>
-            <td style="color: green; font-weight: bold;">${item.status || 'Present'}</td>
+            <td>${id}</td>
+            <td>${sem}</td>
+            <td>${slot}</td>
+            <td>${time}</td>
+            <td style="color: green; font-weight: bold;">${status}</td>
           `;
           tbody.appendChild(tr);
         });
@@ -110,6 +123,7 @@
             const data = await res.json();
             alert(data.message || "Attendance Session Started Successfully!");
             statusMsg.innerText = "🟢 Attendance window is OPEN!";
+            fetchAttendance(); // Session start hone par table refresh karein
           }, (err) => {
             alert("Location access denied or error: " + err.message);
             statusMsg.innerText = "❌ Location required to start session.";
@@ -129,13 +143,12 @@
           const res = await fetch('/api/attendance/clear-all', { method: 'DELETE' });
           const data = await res.json();
           alert(data.message);
-          location.reload();
+          fetchAttendance(); // Reload table data immediately
         } catch (err) {
           alert("Error: " + err.message);
         }
       }
     }
   </script>
-  <script src="script.js"></script>
 </body>
 </html>
