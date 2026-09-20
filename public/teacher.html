@@ -13,6 +13,7 @@
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
     th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
     th { background-color: #007bff; color: white; }
+    .total-summary { margin-top: 15px; padding: 12px; background-color: #e9ecef; border-radius: 5px; font-weight: bold; font-size: 1.1em; color: #333; }
   </style>
 </head>
 <body>
@@ -37,19 +38,60 @@
         </tr>
       </thead>
       <tbody id="attendanceTable">
-        <!-- Dynamic Records -->
+        <!-- Records will load dynamically -->
       </tbody>
     </table>
+
+    <!-- Total Students Count Summary -->
+    <div class="total-summary" id="totalCountBox">
+      📊 Total Present Students: <span id="studentCount">0</span>
+    </div>
   </div>
 
   <script>
-    // Start Class / Session Toggle Logic
+    // Page load hote hi attendance data fetch karein
+    document.addEventListener('DOMContentLoaded', fetchTeacherAttendance);
+
+    async function fetchTeacherAttendance() {
+      try {
+        const res = await fetch('/api/attendance');
+        const records = await res.json();
+
+        const tbody = document.getElementById('attendanceTable');
+        const studentCountEl = document.getElementById('studentCount');
+        tbody.innerHTML = '';
+
+        if (!records || records.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Koi attendance record nahi mila.</td></tr>';
+          studentCountEl.innerText = '0';
+          return;
+        }
+
+        records.forEach(item => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${item.studentId || item.rollNo || 'N/A'}</td>
+            <td>${item.semester || 'Semester 5'}</td>
+            <td>${item.slot || item.sessionSlot || 'Morning'}</td>
+            <td>${item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : (item.time || 'N/A')}</td>
+            <td style="color: green; font-weight: bold;">${item.status || 'Present'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Total count update
+        studentCountEl.innerText = records.length;
+      } catch (err) {
+        console.error("Error fetching attendance:", err);
+      }
+    }
+
+    // Start Session Logic
     async function startClass() {
       try {
         const statusMsg = document.getElementById('statusMsg');
         statusMsg.innerText = "Activating session & capturing location...";
         
-        // Request Geolocation
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(async (position) => {
             const teacherLat = position.coords.latitude;
