@@ -7,8 +7,8 @@
   <style>
     body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 20px; }
     .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-    .btn-start { background-color: #28a745; color: white; margin-right: 10px; }
+    button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px; }
+    .btn-start { background-color: #28a745; color: white; }
     .btn-clear { background-color: #dc3545; color: white; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
     th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
@@ -21,7 +21,7 @@
     <h2>🎓 Teacher Panel (Semester 5)</h2>
     <button class="btn-start" onclick="startClass()">📍 Start Attendance Session</button>
     <button class="btn-clear" onclick="clearData()">🗑️ Clear Session Attendance Data</button>
-    <p id="statusMsg" style="margin-top: 10px; font-weight: bold;"></p>
+    <p id="statusMsg" style="margin-top: 10px; font-weight: bold; color: green;"></p>
   </div>
 
   <div class="card">
@@ -37,12 +37,50 @@
         </tr>
       </thead>
       <tbody id="attendanceTable">
-        <!-- Records will load dynamically -->
+        <!-- Dynamic Records -->
       </tbody>
     </table>
   </div>
 
   <script>
+    // Start Class / Session Toggle Logic
+    async function startClass() {
+      try {
+        const statusMsg = document.getElementById('statusMsg');
+        statusMsg.innerText = "Activating session & capturing location...";
+        
+        // Request Geolocation
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(async (position) => {
+            const teacherLat = position.coords.latitude;
+            const teacherLng = position.coords.longitude;
+
+            const res = await fetch('/api/session/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                lat: teacherLat,
+                lng: teacherLng,
+                semester: 'Semester 5'
+              })
+            });
+
+            const data = await res.json();
+            alert(data.message || "Attendance Session Started Successfully!");
+            statusMsg.innerText = "🟢 Attendance window is OPEN!";
+          }, (err) => {
+            alert("Location access denied or error: " + err.message);
+            statusMsg.innerText = "❌ Location required to start session.";
+          });
+        } else {
+          alert("Geolocation is not supported by this browser.");
+        }
+      } catch (err) {
+        alert("Error starting session: " + err.message);
+      }
+    }
+
+    // Clear Data Logic
     async function clearData() {
       if (confirm("Kya aap sure hain ki aap current session ka attendance data delete karna chahte hain?")) {
         try {
