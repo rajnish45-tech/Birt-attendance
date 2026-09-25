@@ -128,12 +128,26 @@ app.get('/api/attendance/list', async (req, res) => {
   }
 });
 
-const path = require('path');
+// Fetch All Attendance (For HOD & Teacher Panel Compatibility)
+app.get('/api/attendance/all', async (req, res) => {
+  try {
+    const records = await Attendance.find().sort({ timestamp: -1 });
+    res.json(records);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching records' });
+  }
+});
 
-// Express Static Folder
-app.use(express.static(path.join(__dirname, 'public')));
+app.get('/api/attendance', async (req, res) => {
+  try {
+    const records = await Attendance.find().sort({ timestamp: -1 });
+    res.json(records);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching records' });
+  }
+});
 
-// Explicit Route for Teacher Panel to bypass cache
+// Explicit Route for Teacher Panel
 app.get('/teacher.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'teacher.html'));
 });
@@ -151,13 +165,4 @@ app.delete('/api/attendance/clear-all', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Mobile Access URL: http://YOUR_PC_IP:${PORT}`);
-});
-
-app.delete('/api/attendance/clear-all', async (req, res) => {
-  try {
-    await Attendance.deleteMany({});
-    res.json({ success: true, message: 'Data delete ho gaya hai!' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Error: ' + err.message });
-  }
 });
