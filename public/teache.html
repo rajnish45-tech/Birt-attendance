@@ -44,12 +44,11 @@
           </tr>
         </thead>
         <tbody id="attendanceTable">
-          <!-- Data loads dynamically -->
+          <!-- Data dynamic load hoga -->
         </tbody>
       </table>
     </div>
 
-    <!-- Total Students Count Summary -->
     <div class="total-summary">
       📊 Total Present Students: <span id="studentCount">0</span>
     </div>
@@ -60,10 +59,9 @@
 
     async function fetchAttendance() {
       try {
-        // HOD waala same API route fetch karein
         let res = await fetch('/api/attendance/all');
         if (!res.ok) {
-          res = await fetch('/api/attendance');
+          res = await fetch('/api/attendance/list');
         }
         
         let records = await res.json();
@@ -78,7 +76,6 @@
           return;
         }
 
-        // Ascending Order Sorting (Small to Big Roll Number: 78, 87, 123...)
         records.sort((a, b) => {
           let rollA = parseInt(a.rollNo || a.studentId || a.rollNumber || 0);
           let rollB = parseInt(b.rollNo || b.studentId || b.rollNumber || 0);
