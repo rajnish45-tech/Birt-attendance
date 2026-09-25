@@ -5,15 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Teacher Panel - BIRT Attendance</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 20px; }
-    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; margin: 0; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    h2, h3 { margin-top: 0; color: #222; }
+    button { padding: 12px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 10px; width: 100%; font-size: 14px; }
     .btn-start { background-color: #28a745; color: white; }
     .btn-clear { background-color: #dc3545; color: white; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-    th { background-color: #007bff; color: white; }
-    .total-summary { margin-top: 15px; padding: 12px; background-color: #e9ecef; border-radius: 5px; font-weight: bold; font-size: 1.1em; color: #333; }
+    
+    /* Table Styling matched with HOD */
+    .table-container { overflow-x: auto; margin-top: 15px; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { background-color: #343a40; color: white; padding: 12px 10px; font-size: 14px; }
+    td { padding: 12px 10px; border-bottom: 1px solid #e9ecef; font-weight: bold; font-size: 14px; }
+    .status-present { color: #28a745; }
+    
+    .total-summary { margin-top: 15px; padding: 12px; background-color: #e9ecef; border-radius: 8px; font-weight: bold; font-size: 1em; color: #333; text-align: center; }
   </style>
 </head>
 <body>
@@ -22,84 +29,94 @@
     <h2>🎓 Teacher Panel (Semester 5)</h2>
     <button class="btn-start" onclick="startClass()">📍 Start Attendance Session</button>
     <button class="btn-clear" onclick="clearData()">🗑️ Clear Session Attendance Data</button>
-    <p id="statusMsg" style="margin-top: 10px; font-weight: bold; color: green;"></p>
+    <p id="statusMsg" style="margin-top: 5px; font-weight: bold; color: #28a745; text-align: center;"></p>
   </div>
 
   <div class="card">
-    <h3>📋 Semester 5 Attendance Records</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Student ID / Roll No</th>
-          <th>Semester</th>
-          <th>Session Slot</th>
-          <th>Time Stamp</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="attendanceTable">
-        <!-- Records will load dynamically -->
-      </tbody>
-    </table>
+    <h3>📊 Department Attendance Summary</h3>
+    
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Roll Number</th>
+            <th>Date & Time</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="attendanceTable">
+          <!-- Data will load here -->
+        </tbody>
+      </table>
+    </div>
 
     <!-- Total Students Count Summary -->
-    <div class="total-summary" id="totalCountBox">
+    <div class="total-summary">
       📊 Total Present Students: <span id="studentCount">0</span>
     </div>
   </div>
 
   <script>
-    // Page load hote hi HOD style me attendance fetch karein
     document.addEventListener('DOMContentLoaded', fetchAttendance);
 
     async function fetchAttendance() {
       try {
-        // Multi-route fallback: pehle /api/attendance try karo, agar error aaye toh /api/attendance/all
         let res = await fetch('/api/attendance');
         if (!res.ok) {
           res = await fetch('/api/attendance/all');
         }
         
-        const records = await res.json();
+        let records = await res.json();
         const tbody = document.getElementById('attendanceTable');
         const studentCountEl = document.getElementById('studentCount');
         
         tbody.innerHTML = '';
 
         if (!records || !Array.isArray(records) || records.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Koi attendance record nahi mila.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Koi attendance record nahi mila.</td></tr>';
           studentCountEl.innerText = '0';
           return;
         }
 
+        // 1. Roll Number ko Small to Big (Ascending Order) me Sort karne ka logic
+        records.sort((a, b) => {
+          let rollA = parseInt(a.rollNo || a.studentId || a.rollNumber || 0);
+          let rollB = parseInt(b.rollNo || b.studentId || b.rollNumber || 0);
+          return rollA - rollB; // Ascending order (87, 95, 127...)
+        });
+
+        // 2. Table me Rows Render karna
         records.forEach(item => {
           const tr = document.createElement('tr');
           
-          // Flexible key fallback (Roll No / Student ID / Name)
-          const id = item.studentId || item.rollNo || item.rollNumber || item.name || 'N/A';
-          const sem = item.semester || item.sem || 'Semester 5';
-          const slot = item.sessionSlot || item.slot || 'Morning';
-          const time = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : (item.time || 'N/A');
+          const rollNo = item.rollNo || item.studentId || item.rollNumber || 'N/A';
+          
+          let dateTimeStr = 'N/A';
+          if (item.timestamp) {
+            const dateObj = new Date(item.timestamp);
+            dateTimeStr = dateObj.toLocaleString('en-GB'); // Format: 25/09/2026, 11:42:10
+          } else if (item.date || item.time) {
+            dateTimeStr = `${item.date || ''} ${item.time || ''}`.trim();
+          }
+
           const status = item.status || 'Present';
 
           tr.innerHTML = `
-            <td>${id}</td>
-            <td>${sem}</td>
-            <td>${slot}</td>
-            <td>${time}</td>
-            <td style="color: green; font-weight: bold;">${status}</td>
+            <td>${rollNo}</td>
+            <td>${dateTimeStr}</td>
+            <td class="status-present">${status}</td>
           `;
           tbody.appendChild(tr);
         });
 
-        // Total count update
+        // 3. Total Students Count update karna
         studentCountEl.innerText = records.length;
       } catch (err) {
         console.error("Error fetching attendance:", err);
       }
     }
 
-    // Start Session Logic
+    // Start Session Functionality
     async function startClass() {
       try {
         const statusMsg = document.getElementById('statusMsg');
@@ -123,9 +140,9 @@
             const data = await res.json();
             alert(data.message || "Attendance Session Started Successfully!");
             statusMsg.innerText = "🟢 Attendance window is OPEN!";
-            fetchAttendance(); // Session start hone par table refresh karein
+            fetchAttendance();
           }, (err) => {
-            alert("Location access denied or error: " + err.message);
+            alert("Location access denied: " + err.message);
             statusMsg.innerText = "❌ Location required to start session.";
           });
         } else {
@@ -136,14 +153,14 @@
       }
     }
 
-    // Clear Data Logic
+    // Clear Data Functionality
     async function clearData() {
-      if (confirm("Kya aap sure hain ki aap current session ka attendance data delete karna chahte hain?")) {
+      if (confirm("Kya aap sure hain ki aap attendance data delete karna chahte hain?")) {
         try {
           const res = await fetch('/api/attendance/clear-all', { method: 'DELETE' });
           const data = await res.json();
           alert(data.message);
-          fetchAttendance(); // Reload table data immediately
+          fetchAttendance();
         } catch (err) {
           alert("Error: " + err.message);
         }
