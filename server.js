@@ -128,6 +128,26 @@ app.get('/api/attendance/list', async (req, res) => {
   }
 });
 
+const path = require('path');
+
+// Express Static Folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Explicit Route for Teacher Panel to bypass cache
+app.get('/teacher.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'teacher.html'));
+});
+
+// Clear Data Route
+app.delete('/api/attendance/clear-all', async (req, res) => {
+  try {
+    await Attendance.deleteMany({});
+    res.json({ success: true, message: 'Data delete ho gaya hai!' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Error: ' + err.message });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Mobile Access URL: http://YOUR_PC_IP:${PORT}`);
