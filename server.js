@@ -145,7 +145,7 @@ app.post('/api/attendance/mark', async (req, res) => {
 // 3. Get All Attendance Records for Teacher & HOD
 app.get('/api/attendance/all', async (req, res) => {
   try {
-    const records = await Attendance.find().sort({ timestamp: -1 });
+    const records = await Attendance.find().sort({ studentId: 1 });
     res.json(records);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching records' });
@@ -161,7 +161,7 @@ app.get('/api/attendance/export', async (req, res) => {
     if (branch) query.branch = branch;
     if (subject) query.subject = subject;
 
-    const records = await Attendance.find(query).sort({ timestamp: -1 });
+    const records = await Attendance.find(query).sort({ studentId: 1 });
 
     let csvData = "Roll Number,Branch,Subject,Date & Time,Device ID\n";
 
