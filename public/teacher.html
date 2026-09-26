@@ -44,7 +44,7 @@
           </tr>
         </thead>
         <tbody id="attendanceTable">
-          <!-- Data dynamic load hoga -->
+          <!-- Live Attendance Records -->
         </tbody>
       </table>
     </div>
@@ -61,7 +61,7 @@
       try {
         let res = await fetch('/api/attendance/all');
         if (!res.ok) {
-          res = await fetch('/api/attendance/list');
+          res = await fetch('/api/attendance');
         }
         
         let records = await res.json();

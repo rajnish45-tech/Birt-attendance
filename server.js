@@ -37,21 +37,19 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// 1. Teacher Start Session
+// 1. Start Session
 app.post('/api/session/start', (req, res) => {
   const { lat, lng } = req.body;
-  
   global.currentSession = {
     active: true,
     classLat: lat,
     classLng: lng,
     maxDistanceMeters: 25
   };
-
   return res.json({ success: true, message: 'Classroom Location Set! Attendance window open.' });
 });
 
-// 2. Student Attendance Mark Route
+// 2. Student Mark Attendance
 app.post('/api/attendance/mark', async (req, res) => {
   const { studentId, userLat, userLng } = req.body;
   const now = new Date();
@@ -61,7 +59,6 @@ app.post('/api/attendance/mark', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Teacher ne abhi attendance start nahi ki hai!' });
   }
 
-  // Auto Determine Slot (Subah vs Dopahar)
   let sessionType = '';
   if (currentHour >= 6 && currentHour < 12) {
     sessionType = 'Morning';
@@ -71,7 +68,6 @@ app.post('/api/attendance/mark', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Attendance timing sirf Subah ya Dopahar ke slots me allowed hai!' });
   }
 
-  // Location Verification
   const distance = calculateDistance(
     global.currentSession.classLat,
     global.currentSession.classLng,
@@ -86,10 +82,9 @@ app.post('/api/attendance/mark', async (req, res) => {
     });
   }
 
-  const todayDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  const todayDate = now.toISOString().split('T')[0];
 
   try {
-    // Save Record for Semester 5
     const newRecord = new Attendance({
       studentId,
       semester: 'Semester 5',
@@ -108,7 +103,7 @@ app.post('/api/attendance/mark', async (req, res) => {
       sessionType
     });
   } catch (err) {
-    if (err.code === 11000) { // Duplicate Entry Error Code
+    if (err.code === 11000) {
       return res.status(400).json({ 
         success: false, 
         message: `Aapne ${sessionType} session ki attendance pehle hi laga li hai!` 
@@ -118,17 +113,7 @@ app.post('/api/attendance/mark', async (req, res) => {
   }
 });
 
-// 3. Fetch Live List
-app.get('/api/attendance/list', async (req, res) => {
-  try {
-    const records = await Attendance.find().sort({ timestamp: -1 });
-    res.json(records);
-  } catch (err) {
-    res.status(500).json({ message: 'Error fetching records' });
-  }
-});
-
-// Fetch All Attendance (For HOD & Teacher Panel Compatibility)
+// 3. Fetch All Attendance Data Routes (Both endpoints work)
 app.get('/api/attendance/all', async (req, res) => {
   try {
     const records = await Attendance.find().sort({ timestamp: -1 });
@@ -147,12 +132,7 @@ app.get('/api/attendance', async (req, res) => {
   }
 });
 
-// Explicit Route for Teacher Panel
-app.get('/teacher.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'teacher.html'));
-});
-
-// Clear Data Route
+// 4. Clear Data Route
 app.delete('/api/attendance/clear-all', async (req, res) => {
   try {
     await Attendance.deleteMany({});
@@ -163,6 +143,5 @@ app.delete('/api/attendance/clear-all', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Mobile Access URL: http://YOUR_PC_IP:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
