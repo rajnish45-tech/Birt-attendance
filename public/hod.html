@@ -1,95 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script>
-  if (localStorage.getItem('userRole') !== 'hod') {
-    window.location.href = '/login.html';
-  }
-</script>
-
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HOD Dashboard - BIRT Attendance</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #eef2f5; margin: 20px; }
-    .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-    th { background: #343a40; color: white; }
-    .export-btn { background: #17a2b8; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; margin: 0; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    h2, h3 { margin-top: 0; color: #222; }
+    p.subtitle { color: #666; margin-top: -8px; font-size: 14px; }
+    
+    .btn-download { background-color: #17a2b8; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; margin-bottom: 15px; }
+    .btn-download:hover { background-color: #138496; }
+
+    .table-container { overflow-x: auto; margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { background-color: #343a40; color: white; padding: 12px 10px; font-size: 14px; }
+    td { padding: 12px 10px; border-bottom: 1px solid #e9ecef; font-weight: bold; font-size: 14px; }
+    .status-present { color: #28a745; }
+    
+    .total-summary { margin-top: 15px; padding: 12px; background-color: #e9ecef; border-radius: 8px; font-weight: bold; font-size: 1em; color: #333; text-align: center; }
   </style>
 </head>
 <body>
 
   <div class="card">
     <h2>🏛️ HOD Attendance Monitoring Portal</h2>
-    <p>Overall Real-Time Live Records</p>
-    <button class="export-btn" onclick="exportToCSV()">📥 Download Attendance Report (CSV)</button>
+    <p class="subtitle">Overall Real-Time Live Records</p>
+    <button class="btn-download" onclick="downloadCSV()">📥 Download Attendance Report (CSV)</button>
   </div>
 
   <div class="card">
     <h3>📊 Department Attendance Summary</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Roll Number</th>
-          <th>Date & Time</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="hodTable">
-        <tr><td colspan="3">Loading records...</td></tr>
-      </tbody>
-    </table>
+    
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Roll Number</th>
+            <th>Date & Time</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="attendanceTable">
+          <tr><td colspan="3" style="text-align:center;">Loading records...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="total-summary">
+      📊 Total Present Students: <span id="studentCount">0</span>
+    </div>
   </div>
 
   <script>
-    let attendanceData = [];
+    let globalRecords = [];
 
-    async function fetchHODRecords() {
+    document.addEventListener('DOMContentLoaded', fetchAttendance);
+
+    async function fetchAttendance() {
       try {
-        const res = await fetch('/api/attendance/list');
-        attendanceData = await res.json();
-        const tbody = document.getElementById('hodTable');
+        let res = await fetch('/api/attendance/all');
+        if (!res.ok) {
+          res = await fetch('/api/attendance');
+        }
+        
+        globalRecords = await res.json();
+        const tbody = document.getElementById('attendanceTable');
+        const studentCountEl = document.getElementById('studentCount');
+        
         tbody.innerHTML = '';
 
-        if (attendanceData.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="3">No attendance records found.</td></tr>';
+        if (!globalRecords || !Array.isArray(globalRecords) || globalRecords.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Koi attendance record nahi mila.</td></tr>';
+          studentCountEl.innerText = '0';
           return;
         }
 
-        attendanceData.forEach(item => {
-          tbody.innerHTML += `<tr>
-            <td><b>${item.studentId}</b></td>
-            <td>${new Date(item.timestamp).toLocaleString()}</td>
-            <td><span style="color:green;font-weight:bold;">${item.status}</span></td>
-          </tr>`;
+        // Ascending Sort (78, 87, 123...)
+        globalRecords.sort((a, b) => {
+          let rollA = parseInt(a.rollNo || a.studentId || a.rollNumber || 0);
+          let rollB = parseInt(b.rollNo || b.studentId || b.rollNumber || 0);
+          return rollA - rollB;
         });
+
+        globalRecords.forEach(item => {
+          const tr = document.createElement('tr');
+          const rollNo = item.rollNo || item.studentId || item.rollNumber || 'N/A';
+          
+          let dateTimeStr = 'N/A';
+          if (item.timestamp) {
+            const dateObj = new Date(item.timestamp);
+            dateTimeStr = dateObj.toLocaleString('en-GB');
+          } else if (item.date || item.time) {
+            dateTimeStr = `${item.date || ''} ${item.time || ''}`.trim();
+          }
+
+          const status = item.status || 'Present';
+
+          tr.innerHTML = `
+            <td>${rollNo}</td>
+            <td>${dateTimeStr}</td>
+            <td class="status-present">${status}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        studentCountEl.innerText = globalRecords.length;
       } catch (err) {
-        console.error("Error fetching data:", err);
+        console.error("Error fetching HOD attendance:", err);
+        document.getElementById('attendanceTable').innerHTML = '<tr><td colspan="3" style="text-align:center; color:red;">Data load karne me error aaya.</td></tr>';
       }
     }
 
-    function exportToCSV() {
-      if (attendanceData.length === 0) return alert("No data to export!");
+    function downloadCSV() {
+      if (!globalRecords || globalRecords.length === 0) {
+        alert("Download karne ke liye koi record nahi hai!");
+        return;
+      }
+
       let csvContent = "data:text/csv;charset=utf-8,Roll Number,Date & Time,Status\n";
-      
-      attendanceData.forEach(row => {
-        csvContent += `${row.studentId},${new Date(row.timestamp).toLocaleString()},${row.status}\n`;
+
+      globalRecords.forEach(item => {
+        const rollNo = item.rollNo || item.studentId || item.rollNumber || 'N/A';
+        let dateTimeStr = 'N/A';
+        if (item.timestamp) {
+          dateTimeStr = new Date(item.timestamp).toLocaleString('en-GB');
+        } else if (item.date || item.time) {
+          dateTimeStr = `${item.date || ''} ${item.time || ''}`.trim();
+        }
+        const status = item.status || 'Present';
+
+        csvContent += `"${rollNo}","${dateTimeStr}","${status}"\n`;
       });
 
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `Attendance_Report_${new Date().toISOString().slice(0,10)}.csv`);
+      link.setAttribute("download", `Attendance_Report_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
-
-    // Auto Refresh har 5 second me
-    fetchHODRecords();
-    setInterval(fetchHODRecords, 5000);
   </script>
 </body>
 </html>
