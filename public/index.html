@@ -3,50 +3,104 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BIRT Attendance Portal</title>
+  <title>Student Attendance - BIRT</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: linear-gradient(135deg, #0f172a, #1e293b);
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      margin: 0;
-    }
-    .card {
-      background: white;
-      padding: 40px;
-      border-radius: 12px;
-      text-align: center;
-      width: 320px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-    }
-    .btn {
-      display: block;
-      width: 100%;
-      padding: 12px;
-      margin: 12px 0;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-      text-decoration: none;
-      box-sizing: border-box;
-    }
-    .btn-student { background: #16a34a; color: white; }
-    .btn-staff { background: #2563eb; color: white; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #eef2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 15px; }
+    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+    h2 { margin-bottom: 15px; color: #333; }
+    select, input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; box-sizing: border-box; }
+    button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    #msg { margin-top: 15px; font-weight: bold; }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <h2>🎓 BIRT Attendance System</h2>
-    <p>Semester 5 Portal</p>
-    <a href="/student.html" class="btn btn-student">🧑‍🎓 Student Portal</a>
-    <a href="/login.html" class="btn btn-staff">🔒 Teacher / HOD Login</a>
+    <h2>👨‍🎓 Student Attendance</h2>
+    
+    <label style="text-align: left; display: block; margin-bottom: 5px;"><b>Select Branch:</b></label>
+    <select id="branchSelect">
+      <option value="Computer Science">Computer Science</option>
+      <option value="AIML">AIML</option>
+      <option value="EC">EC</option>
+      <option value="EX">EX</option>
+      <option value="Mechanical">Mechanical</option>
+      <option value="CIVIL">CIVIL</option>
+    </select>
+
+    <input type="text" id="subjectInput" placeholder="Enter Subject Name (e.g. Java, DBMS)" />
+    <input type="text" id="studentId" placeholder="Enter Roll Number / Student ID" />
+    <input type="number" id="enteredCode" placeholder="Enter 4-Digit Teacher Passcode" maxlength="4" />
+
+    <button onclick="markAttendance()">Mark Attendance</button>
+
+    <div id="msg"></div>
   </div>
 
+  <script>
+    function getDeviceId() {
+      let deviceId = localStorage.getItem('birt_device_id');
+      if (!deviceId) {
+        deviceId = 'DEV_' + Math.random().toString(36).substring(2, 15) + Date.now();
+        localStorage.setItem('birt_device_id', deviceId);
+      }
+      return deviceId;
+    }
+
+    async function markAttendance() {
+      const branch = document.getElementById('branchSelect').value;
+      const subject = document.getElementById('subjectInput').value.trim();
+      const studentId = document.getElementById('studentId').value.trim();
+      const enteredCode = document.getElementById('enteredCode').value.trim();
+      const msg = document.getElementById('msg');
+
+      if (!subject || !studentId || !enteredCode) {
+        alert("Saari details (Subject, Roll Number, Passcode) bharna zaroori hai!");
+        return;
+      }
+
+      msg.style.color = "blue";
+      msg.innerText = "Verifying Location & Device Lock...";
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+          try {
+            const res = await fetch('/api/attendance/mark', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                branch,
+                subject,
+                studentId,
+                enteredCode,
+                userLat: pos.coords.latitude,
+                userLng: pos.coords.longitude,
+                deviceId: getDeviceId()
+              })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+              msg.style.color = "green";
+              msg.innerText = "✅ " + data.message;
+            } else {
+              msg.style.color = "red";
+              msg.innerText = "❌ " + data.message;
+            }
+          } catch (err) {
+            msg.style.color = "red";
+            msg.innerText = "Error: " + err.message;
+          }
+        }, (err) => {
+          msg.style.color = "red";
+          msg.innerText = "❌ GPS Location Required: " + err.message;
+        }, { enableHighAccuracy: true });
+      } else {
+        alert("Geolocation is not supported on this browser.");
+      }
+    }
+  </script>
 </body>
 </html>

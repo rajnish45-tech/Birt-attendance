@@ -3,54 +3,73 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Teacher Panel - BIRT Attendance</title>
+  <title>Teacher & HOD Panel - Attendance</title>
   <style>
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; margin: 0; }
     .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
     h2, h3 { margin-top: 0; color: #222; }
+    select, input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; }
     button { padding: 12px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 10px; width: 100%; font-size: 14px; }
     .btn-start { background-color: #28a745; color: white; }
+    .btn-download { background-color: #007bff; color: white; }
     .btn-clear { background-color: #dc3545; color: white; }
-    
     .table-container { overflow-x: auto; margin-top: 15px; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
     th { background-color: #343a40; color: white; padding: 12px 10px; font-size: 14px; }
     td { padding: 12px 10px; border-bottom: 1px solid #e9ecef; font-weight: bold; font-size: 14px; }
     .status-present { color: #28a745; }
-    
     .total-summary { margin-top: 15px; padding: 12px; background-color: #e9ecef; border-radius: 8px; font-weight: bold; font-size: 1em; color: #333; text-align: center; }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <h2>🎓 Teacher Panel (Semester 5)</h2>
-    <button class="btn-start" onclick="startClass()">📍 Start Attendance Session</button>
-    <button class="btn-clear" onclick="clearData()">🗑️ Clear Session Attendance Data</button>
+    <h2>🎓 Teacher & HOD Panel</h2>
+    
+    <label><b>Select Branch:</b></label>
+    <select id="branchSelect">
+      <option value="Computer Science">Computer Science</option>
+      <option value="AIML">AIML</option>
+      <option value="EC">EC</option>
+      <option value="EX">EX</option>
+      <option value="Mechanical">Mechanical</option>
+      <option value="CIVIL">CIVIL</option>
+    </select>
+
+    <label><b>Enter Subject Name:</b></label>
+    <input type="text" id="subjectInput" placeholder="e.g. Java, DBMS, Operating Systems" />
+
+    <label><b>Set 4-Digit Passcode:</b></label>
+    <input type="number" id="teacherCode" placeholder="e.g. 4821" maxlength="4" />
+
+    <button class="btn-start" onclick="startClass()">📍 Start Session (20m Geofence)</button>
+    <button class="btn-download" onclick="downloadCSV()">📥 Download Attendance Sheet (Excel/CSV)</button>
+    <button class="btn-clear" onclick="deleteSubjectData()">🗑️ Delete Subject Data</button>
     <p id="statusMsg" style="margin-top: 5px; font-weight: bold; color: #28a745; text-align: center;"></p>
   </div>
 
   <div class="card">
-    <h3>📊 Department Attendance Summary</h3>
-    
+    <h3>📊 Attendance Dashboard</h3>
     <div class="table-container">
       <table>
         <thead>
           <tr>
             <th>Roll Number</th>
+            <th>Branch</th>
+            <th>Subject</th>
             <th>Date & Time</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody id="attendanceTable">
-          <!-- Live Attendance Records -->
+          <!-- Records populated dynamically -->
         </tbody>
       </table>
     </div>
 
     <div class="total-summary">
-      📊 Total Present Students: <span id="studentCount">0</span>
+      📊 Total Present Records: <span id="studentCount">0</span>
     </div>
   </div>
 
@@ -59,97 +78,118 @@
 
     async function fetchAttendance() {
       try {
-        let res = await fetch('/api/attendance/all');
-        if (!res.ok) {
-          res = await fetch('/api/attendance');
-        }
-        
-        let records = await res.json();
+        const res = await fetch('/api/attendance/all');
+        const records = await res.json();
         const tbody = document.getElementById('attendanceTable');
         const studentCountEl = document.getElementById('studentCount');
         
         tbody.innerHTML = '';
 
-        if (!records || !Array.isArray(records) || records.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Koi attendance record nahi mila.</td></tr>';
+        if (!records || records.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Koi record nahi mila.</td></tr>';
           studentCountEl.innerText = '0';
           return;
         }
 
-        records.sort((a, b) => {
-          let rollA = parseInt(a.rollNo || a.studentId || a.rollNumber || 0);
-          let rollB = parseInt(b.rollNo || b.studentId || b.rollNumber || 0);
-          return rollA - rollB;
-        });
-
         records.forEach(item => {
           const tr = document.createElement('tr');
-          const rollNo = item.rollNo || item.studentId || item.rollNumber || 'N/A';
-          
-          let dateTimeStr = 'N/A';
-          if (item.timestamp) {
-            const dateObj = new Date(item.timestamp);
-            dateTimeStr = dateObj.toLocaleString('en-GB');
-          } else if (item.date || item.time) {
-            dateTimeStr = `${item.date || ''} ${item.time || ''}`.trim();
-          }
-
-          const status = item.status || 'Present';
+          const rollNo = item.studentId || 'N/A';
+          const branch = item.branch || 'N/A';
+          const subject = item.subject || 'General';
+          const dateTimeStr = item.timestamp ? new Date(item.timestamp).toLocaleString('en-IN') : item.date;
 
           tr.innerHTML = `
             <td>${rollNo}</td>
+            <td>${branch}</td>
+            <td><strong>${subject}</strong></td>
             <td>${dateTimeStr}</td>
-            <td class="status-present">${status}</td>
+            <td class="status-present">Present</td>
           `;
           tbody.appendChild(tr);
         });
 
         studentCountEl.innerText = records.length;
       } catch (err) {
-        console.error("Error fetching attendance:", err);
+        console.error("Error:", err);
       }
     }
 
     async function startClass() {
-      try {
-        const statusMsg = document.getElementById('statusMsg');
-        statusMsg.innerText = "Activating session & capturing location...";
-        
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(async (position) => {
-            const teacherLat = position.coords.latitude;
-            const teacherLng = position.coords.longitude;
+      const branch = document.getElementById('branchSelect').value;
+      const subject = document.getElementById('subjectInput').value.trim();
+      const teacherCode = document.getElementById('teacherCode').value.trim();
 
+      if (!subject) {
+        alert("Subject name enter karein!");
+        return;
+      }
+
+      if (!teacherCode || teacherCode.length !== 4) {
+        alert("4-digit passcode enter karein!");
+        return;
+      }
+
+      const statusMsg = document.getElementById('statusMsg');
+      statusMsg.innerText = "Capturing Location & Starting Session...";
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+          try {
             const res = await fetch('/api/session/start', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                lat: teacherLat,
-                lng: teacherLng,
-                semester: 'Semester 5'
+                branch,
+                subject,
+                teacherCode,
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude
               })
             });
 
             const data = await res.json();
-            alert(data.message || "Attendance Session Started Successfully!");
-            statusMsg.innerText = "🟢 Attendance window is OPEN!";
+            alert(data.message);
+            statusMsg.innerText = `🟢 ACTIVE: ${branch} - ${subject} (Passcode: ${teacherCode})`;
             fetchAttendance();
-          }, (err) => {
-            alert("Location access denied: " + err.message);
-            statusMsg.innerText = "❌ Location required to start session.";
-          });
-        } else {
-          alert("Geolocation is not supported by this browser.");
-        }
-      } catch (err) {
-        alert("Error starting session: " + err.message);
+          } catch (err) {
+            alert("Error: " + err.message);
+          }
+        }, (err) => {
+          alert("GPS Access Denied: " + err.message);
+          statusMsg.innerText = "❌ GPS Location Access Denied.";
+        }, { enableHighAccuracy: true });
+      } else {
+        alert("Geolocation not supported on this browser.");
       }
     }
 
-    async function clearData() {
-      if (confirm("Kya aap sure hain ki aap attendance data delete karna chahte hain?")) {
+    function downloadCSV() {
+      const branch = document.getElementById('branchSelect').value;
+      const subject = document.getElementById('subjectInput').value.trim();
+
+      let url = '/api/attendance/export?';
+      if (branch) url += `branch=${encodeURIComponent(branch)}&`;
+      if (subject) url += `subject=${encodeURIComponent(subject)}`;
+
+      window.location.href = url;
+    }
+
+    async function deleteSubjectData() {
+      const branch = document.getElementById('branchSelect').value;
+      const subject = document.getElementById('subjectInput').value.trim();
+
+      if (!subject) {
+        alert("Subject Name enter karein jiska data delete karna hai!");
+        return;
+      }
+
+      if (confirm(`Kya aap "${branch}" ke "${subject}" ka record delete karna chahte hain?`)) {
         try {
-          const res = await fetch('/api/attendance/clear-all', { method: 'DELETE' });
+          const res = await fetch('/api/attendance/delete-subject', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ branch, subject })
+          });
           const data = await res.json();
           alert(data.message);
           fetchAttendance();

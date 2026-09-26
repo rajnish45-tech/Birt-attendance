@@ -18,13 +18,10 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('MongoDB Connected!'))
   .catch(err => console.error('Database Error:', err));
 
-global.currentSession = {
-  active: false,
-  classLat: null,
-  classLng: null,
-  maxDistanceMeters: 25
-};
+// Global Storage for Active Sessions (Key: Branch_Subject)
+global.activeSessions = {};
 
+// Distance Calculation Function (Meters)
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
   const rad = Math.PI / 180;
@@ -37,59 +34,90 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// 1. Start Session
+// 1. Teacher Session Start
 app.post('/api/session/start', (req, res) => {
-  const { lat, lng } = req.body;
-  global.currentSession = {
+  const { branch, subject, teacherCode, lat, lng } = req.body;
+
+  const validBranches = ['Computer Science', 'AIML', 'EC', 'EX', 'Mechanical', 'CIVIL'];
+
+  if (!validBranches.includes(branch)) {
+    return res.status(400).json({ success: false, message: 'Invalid Branch selected!' });
+  }
+
+  if (!subject || subject.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Subject name enter karna zaroori hai!' });
+  }
+
+  if (!teacherCode || teacherCode.toString().length !== 4) {
+    return res.status(400).json({ success: false, message: '4-digit ka passcode enter karein!' });
+  }
+
+  if (!lat || !lng) {
+    return res.status(400).json({ success: false, message: 'GPS location capture nahi ho paya!' });
+  }
+
+  const sessionKey = `${branch.trim()}_${subject.trim().toLowerCase()}`;
+
+  global.activeSessions[sessionKey] = {
     active: true,
-    classLat: lat,
-    classLng: lng,
-    maxDistanceMeters: 25
+    branch: branch.trim(),
+    subject: subject.trim(),
+    teacherCode: teacherCode.toString(),
+    lat: parseFloat(lat),
+    lng: parseFloat(lng),
+    maxDistanceMeters: 20,
+    startTime: Date.now()
   };
-  return res.json({ success: true, message: 'Classroom Location Set! Attendance window open.' });
+
+  return res.json({
+    success: true,
+    message: `Session Started! Branch: ${branch} | Subject: ${subject} | Code: ${teacherCode}`
+  });
 });
 
 // 2. Student Mark Attendance
 app.post('/api/attendance/mark', async (req, res) => {
-  const { studentId, userLat, userLng } = req.body;
-  const now = new Date();
-  const currentHour = now.getHours();
+  const { studentId, branch, subject, enteredCode, userLat, userLng, deviceId } = req.body;
+  const now = Date.now();
 
-  if (!global.currentSession.active) {
-    return res.status(400).json({ success: false, message: 'Teacher ne abhi attendance start nahi ki hai!' });
+  if (!branch || !subject) {
+    return res.status(400).json({ success: false, message: 'Branch aur Subject dono select karein!' });
   }
 
-  let sessionType = '';
-  if (currentHour >= 6 && currentHour < 12) {
-    sessionType = 'Morning';
-  } else if (currentHour >= 12 && currentHour < 18) {
-    sessionType = 'Afternoon';
-  } else {
-    return res.status(400).json({ success: false, message: 'Attendance timing sirf Subah ya Dopahar ke slots me allowed hai!' });
+  const sessionKey = `${branch.trim()}_${subject.trim().toLowerCase()}`;
+  const session = global.activeSessions[sessionKey];
+
+  if (!session || !session.active) {
+    return res.status(400).json({ success: false, message: `${branch} (${subject}) ke liye abhi koi active session nahi hai!` });
   }
 
-  const distance = calculateDistance(
-    global.currentSession.classLat,
-    global.currentSession.classLng,
-    userLat,
-    userLng
-  );
+  if (now - session.startTime > 10 * 60 * 1000) {
+    session.active = false;
+    return res.status(400).json({ success: false, message: '10 min ka session time samapt ho gaya hai!' });
+  }
 
-  if (distance > global.currentSession.maxDistanceMeters) {
-    return res.status(403).json({ 
-      success: false, 
-      message: `Classroom ke bahar hain! Distance: ${Math.round(distance)} meters.` 
+  if (enteredCode.toString() !== session.teacherCode) {
+    return res.status(401).json({ success: false, message: 'Galat 4-digit passcode enter kiya hai!' });
+  }
+
+  const distance = calculateDistance(session.lat, session.lng, userLat, userLng);
+  if (distance > session.maxDistanceMeters) {
+    return res.status(403).json({
+      success: false,
+      message: `Aap classroom ke bahar hain! Distance: ${Math.round(distance)} meters (Max: 20m).`
     });
   }
 
-  const todayDate = now.toISOString().split('T')[0];
+  const todayDate = new Date().toISOString().split('T')[0];
 
   try {
     const newRecord = new Attendance({
       studentId,
       semester: 'Semester 5',
-      sessionType,
+      branch: session.branch,
+      subject: session.subject,
       date: todayDate,
+      deviceId: deviceId || 'UNKNOWN_DEVICE',
       latitude: userLat,
       longitude: userLng
     });
@@ -98,22 +126,23 @@ app.post('/api/attendance/mark', async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Semester 5 (${sessionType} Session) Attendance Successfully Marked!`,
+      message: `Attendance Successfully Marked for ${session.subject}!`,
       studentId,
-      sessionType
+      branch: session.branch,
+      subject: session.subject
     });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Aapne ${sessionType} session ki attendance pehle hi laga li hai!` 
-      });
+      if (err.message.includes('deviceId')) {
+        return res.status(400).json({ success: false, message: `Is device se ${session.subject} ki attendance lag chuki hai!` });
+      }
+      return res.status(400).json({ success: false, message: `Roll Number ${studentId} ki ${session.subject} me attendance lag chuki hai!` });
     }
-    return res.status(500).json({ success: false, message: 'Database Save Error!' });
+    return res.status(500).json({ success: false, message: 'Database Error: ' + err.message });
   }
 });
 
-// 3. Fetch All Attendance Data Routes (Both endpoints work)
+// 3. Get All Attendance Records for Teacher & HOD
 app.get('/api/attendance/all', async (req, res) => {
   try {
     const records = await Attendance.find().sort({ timestamp: -1 });
@@ -123,22 +152,45 @@ app.get('/api/attendance/all', async (req, res) => {
   }
 });
 
-app.get('/api/attendance', async (req, res) => {
+// 4. Download Excel/CSV Report for Teacher & HOD
+app.get('/api/attendance/export', async (req, res) => {
   try {
-    const records = await Attendance.find().sort({ timestamp: -1 });
-    res.json(records);
+    const { branch, subject } = req.query;
+    let query = {};
+
+    if (branch) query.branch = branch;
+    if (subject) query.subject = subject;
+
+    const records = await Attendance.find(query).sort({ timestamp: -1 });
+
+    let csvData = "Roll Number,Branch,Subject,Date & Time,Device ID\n";
+
+    records.forEach(row => {
+      const dateTime = row.timestamp ? new Date(row.timestamp).toLocaleString('en-IN') : row.date;
+      csvData += `"${row.studentId}","${row.branch}","${row.subject}","${dateTime}","${row.deviceId}"\n`;
+    });
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=Attendance_Report_${branch || 'ALL'}_${Date.now()}.csv`);
+    return res.status(200).send(csvData);
+
   } catch (err) {
-    res.status(500).json({ message: 'Error fetching records' });
+    res.status(500).json({ success: false, message: 'Export error: ' + err.message });
   }
 });
 
-// 4. Clear Data Route
-app.delete('/api/attendance/clear-all', async (req, res) => {
+// 5. Delete Specific Subject Data
+app.delete('/api/attendance/delete-subject', async (req, res) => {
+  const { branch, subject } = req.body;
+  if (!branch || !subject) {
+    return res.status(400).json({ success: false, message: 'Branch aur Subject dono enter karein!' });
+  }
+
   try {
-    await Attendance.deleteMany({});
-    res.json({ success: true, message: 'Data delete ho gaya hai!' });
+    await Attendance.deleteMany({ branch, subject });
+    res.json({ success: true, message: `"${branch}" ke "${subject}" ka record delete ho gaya!` });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Error: ' + err.message });
+    res.status(500).json({ success: false, message: 'Delete error: ' + err.message });
   }
 });
 
