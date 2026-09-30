@@ -3,201 +3,242 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Teacher & HOD Panel - Attendance</title>
+  <title>Teacher & HOD Panel - Attendance System</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; margin: 0; }
-    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
-    h2, h3 { margin-top: 0; color: #222; }
-    select, input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; }
-    button { padding: 12px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 10px; width: 100%; font-size: 14px; }
-    .btn-start { background-color: #28a745; color: white; }
-    .btn-download { background-color: #007bff; color: white; }
-    .btn-clear { background-color: #dc3545; color: white; }
-    .table-container { overflow-x: auto; margin-top: 15px; }
-    table { width: 100%; border-collapse: collapse; text-align: left; }
-    th { background-color: #343a40; color: white; padding: 12px 10px; font-size: 14px; }
-    td { padding: 12px 10px; border-bottom: 1px solid #e9ecef; font-weight: bold; font-size: 14px; }
-    .status-present { color: #28a745; }
-    .total-summary { margin-top: 15px; padding: 12px; background-color: #e9ecef; border-radius: 8px; font-weight: bold; font-size: 1em; color: #333; text-align: center; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background: #f4f7f9; margin: 0; padding: 20px; }
+    .container { max-width: 1000px; margin: auto; }
+    .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    h2, h3 { margin-top: 0; color: #2c3e50; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+    label { font-weight: bold; font-size: 14px; margin-bottom: 5px; display: block; color: #555; }
+    input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
+    button { width: 100%; padding: 11px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.2s; }
+    .btn-start { background: #27ae60; color: white; }
+    .btn-start:hover { background: #219150; }
+    .btn-manual { background: #e67e22; color: white; }
+    .btn-manual:hover { background: #d35400; }
+    .btn-filter { background: #2980b9; color: white; }
+    .btn-export { background: #8e44ad; color: white; width: auto; padding: 8px 15px; float: right; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+    th { background: #34495e; color: white; }
+    tr:nth-child(even) { background: #f8f9fa; }
+    .badge-gps { background: #27ae60; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+    .badge-manual { background: #e67e22; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
   </style>
 </head>
 <body>
 
-  <div class="card">
-    <h2>🎓 Teacher & HOD Panel</h2>
-    
-    <label><b>Select Branch:</b></label>
-    <select id="branchSelect">
-      <option value="Computer Science">Computer Science</option>
-      <option value="AIML">AIML</option>
-      <option value="EC">EC</option>
-      <option value="EX">EX</option>
-      <option value="Mechanical">Mechanical</option>
-      <option value="CIVIL">CIVIL</option>
-    </select>
-
-    <label><b>Enter Subject Name:</b></label>
-    <input type="text" id="subjectInput" placeholder="e.g. Java, DBMS, Operating Systems" />
-
-    <label><b>Set 4-Digit Passcode:</b></label>
-    <input type="number" id="teacherCode" placeholder="e.g. 4821" maxlength="4" />
-
-    <button class="btn-start" onclick="startClass()">📍 Start Session (20m Geofence)</button>
-    <button class="btn-download" onclick="downloadCSV()">📥 Download Attendance Sheet (Excel/CSV)</button>
-    <button class="btn-clear" onclick="deleteSubjectData()">🗑️ Delete Subject Data</button>
-    <p id="statusMsg" style="margin-top: 5px; font-weight: bold; color: #28a745; text-align: center;"></p>
+<div class="container">
+  
+  <div class="top-bar">
+    <h2>🎓 Teacher & HOD Dashboard</h2>
+    <a href="/index.html" style="text-decoration:none; color:#2980b9; font-weight:bold;">← Student Panel</a>
   </div>
 
-  <div class="card">
-    <h3>📊 Attendance Dashboard</h3>
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>Roll Number</th>
-            <th>Branch</th>
-            <th>Subject</th>
-            <th>Date & Time</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="attendanceTable">
-          <!-- Records populated dynamically -->
-        </tbody>
-      </table>
+  <div class="grid-2">
+    <!-- 1. Start Class Session -->
+    <div class="card">
+      <h3>📍 Start Live Class Session</h3>
+      <label>Select Branch:</label>
+      <select id="startBranch">
+        <option value="Computer Science">Computer Science</option>
+        <option value="AIML">AIML</option>
+        <option value="EC">EC</option>
+        <option value="EX">EX</option>
+        <option value="Mechanical">Mechanical</option>
+        <option value="CIVIL">CIVIL</option>
+      </select>
+
+      <label>Subject Name:</label>
+      <input type="text" id="startSubject" placeholder="e.g. Java, DBMS, Mathematics">
+
+      <label>4-Digit Passcode:</label>
+      <input type="number" id="startCode" placeholder="e.g. 4821">
+
+      <button class="btn-start" onclick="startSession()">▶ Start Session (GPS Lock)</button>
+      <p id="startMsg" style="margin-top:10px; font-weight:bold;"></p>
     </div>
 
-    <div class="total-summary">
-      📊 Total Present Records: <span id="studentCount">0</span>
+    <!-- 2. Manual Attendance Override -->
+    <div class="card">
+      <h3>🛠️ Manual Attendance Override</h3>
+      <p style="font-size: 12px; color: #666; margin-top: -8px;">Network issue/special permission wale student ke liye.</p>
+      
+      <label>Branch:</label>
+      <select id="manualBranch">
+        <option value="Computer Science">Computer Science</option>
+        <option value="AIML">AIML</option>
+        <option value="EC">EC</option>
+        <option value="EX">EX</option>
+        <option value="Mechanical">Mechanical</option>
+        <option value="CIVIL">CIVIL</option>
+      </select>
+
+      <label>Subject Name:</label>
+      <input type="text" id="manualSubject" placeholder="e.g. Java">
+
+      <label>Student Roll Number / ID:</label>
+      <input type="text" id="manualStudentId" placeholder="e.g. 105 or CS01">
+
+      <button class="btn-manual" onclick="markManual()">✅ Mark Present Manually</button>
+      <p id="manualMsg" style="margin-top:10px; font-weight:bold;"></p>
     </div>
   </div>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', fetchAttendance);
+  <!-- 3. Class & Subject Filter & Attendance List -->
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h3>📋 View Attendance & Filter Records</h3>
+      <button class="btn-export" onclick="exportCSV()">📥 Export Excel (CSV)</button>
+    </div>
 
-    async function fetchAttendance() {
-      try {
-        const res = await fetch('/api/attendance/all');
-        const records = await res.json();
-        const tbody = document.getElementById('attendanceTable');
-        const studentCountEl = document.getElementById('studentCount');
-        
-        tbody.innerHTML = '';
+    <div class="grid-2" style="grid-template-columns: 1fr 1fr 100px; gap: 10px;">
+      <div>
+        <label>Filter Branch:</label>
+        <select id="filterBranch" onchange="fetchRecords()">
+          <option value="ALL">All Branches</option>
+          <option value="Computer Science">Computer Science</option>
+          <option value="AIML">AIML</option>
+          <option value="EC">EC</option>
+          <option value="EX">EX</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="CIVIL">CIVIL</option>
+        </select>
+      </div>
 
-        if (!records || records.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Koi record nahi mila.</td></tr>';
-          studentCountEl.innerText = '0';
-          return;
-        }
+      <div>
+        <label>Filter Subject:</label>
+        <input type="text" id="filterSubject" placeholder="Enter Subject or leave blank for ALL" oninput="fetchRecords()">
+      </div>
 
-        records.forEach(item => {
-          const tr = document.createElement('tr');
-          const rollNo = item.studentId || 'N/A';
-          const branch = item.branch || 'N/A';
-          const subject = item.subject || 'General';
-          const dateTimeStr = item.timestamp ? new Date(item.timestamp).toLocaleString('en-IN') : item.date;
+      <div style="display:flex; align-items:flex-end;">
+        <button class="btn-filter" onclick="fetchRecords()">🔍 Search</button>
+      </div>
+    </div>
 
-          tr.innerHTML = `
-            <td>${rollNo}</td>
-            <td>${branch}</td>
-            <td><strong>${subject}</strong></td>
-            <td>${dateTimeStr}</td>
-            <td class="status-present">Present</td>
-          `;
-          tbody.appendChild(tr);
+    <p style="font-size:13px; color:#555;">Total Marked: <b id="totalCount">0</b> (Sorted by Roll No. Ascending 1,2,3...)</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Roll Number</th>
+          <th>Branch</th>
+          <th>Subject</th>
+          <th>Mode</th>
+          <th>Marked Time</th>
+        </tr>
+      </thead>
+      <tbody id="attendanceTable">
+        <tr><td colspan="6" style="text-align:center;">Loading Records...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  // 1. Start Session
+  function startSession() {
+    const branch = document.getElementById('startBranch').value;
+    const subject = document.getElementById('startSubject').value.trim();
+    const passcode = document.getElementById('startCode').value.trim();
+    const msg = document.getElementById('startMsg');
+
+    if(!subject || !passcode) { alert("Subject Name aur Passcode bharna zaroori hai!"); return; }
+
+    if(navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const res = await fetch('/api/session/start', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            branch, subject, passcode,
+            teacherLat: pos.coords.latitude,
+            teacherLng: pos.coords.longitude
+          })
         });
+        const data = await res.json();
+        msg.style.color = data.success ? "green" : "red";
+        msg.innerText = data.message;
+      }, (err) => { alert("Location required: " + err.message); });
+    }
+  }
 
-        studentCountEl.innerText = records.length;
-      } catch (err) {
-        console.error("Error:", err);
-      }
+  // 2. Mark Manual
+  async function markManual() {
+    const branch = document.getElementById('manualBranch').value;
+    const subject = document.getElementById('manualSubject').value.trim();
+    const studentId = document.getElementById('manualStudentId').value.trim();
+    const msg = document.getElementById('manualMsg');
+
+    if(!subject || !studentId) { alert("Subject aur Student Roll No dono bharein!"); return; }
+
+    const res = await fetch('/api/attendance/manual', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ branch, subject, studentId })
+    });
+    const data = await res.json();
+    msg.style.color = data.success ? "green" : "red";
+    msg.innerText = data.message;
+
+    if(data.success) {
+      document.getElementById('manualStudentId').value = '';
+      fetchRecords(); // Refresh Table
+    }
+  }
+
+  // 3. Fetch Records
+  async function fetchRecords() {
+    const branch = document.getElementById('filterBranch').value;
+    const subject = document.getElementById('filterSubject').value.trim();
+
+    const res = await fetch(`/api/attendance/all?branch=${branch}&subject=${subject}`);
+    const data = await res.json();
+
+    const table = document.getElementById('attendanceTable');
+    document.getElementById('totalCount').innerText = data.records.length;
+
+    if(data.records.length === 0) {
+      table.innerHTML = `<tr><td colspan="6" style="text-align:center;">No attendance records found.</td></tr>`;
+      return;
     }
 
-    async function startClass() {
-      const branch = document.getElementById('branchSelect').value;
-      const subject = document.getElementById('subjectInput').value.trim();
-      const teacherCode = document.getElementById('teacherCode').value.trim();
+    table.innerHTML = '';
+    data.records.forEach((r, i) => {
+      const time = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const badge = r.mode.includes('Manual') 
+        ? `<span class="badge-manual">🛠️ Manual</span>` 
+        : `<span class="badge-gps">📍 Online GPS</span>`;
 
-      if (!subject) {
-        alert("Subject name enter karein!");
-        return;
-      }
+      table.innerHTML += `
+        <tr>
+          <td>${i + 1}</td>
+          <td><b>${r.studentId}</b></td>
+          <td>${r.branch}</td>
+          <td>${r.subject}</td>
+          <td>${badge}</td>
+          <td>${time}</td>
+        </tr>
+      `;
+    });
+  }
 
-      if (!teacherCode || teacherCode.length !== 4) {
-        alert("4-digit passcode enter karein!");
-        return;
-      }
+  // 4. Export CSV
+  function exportCSV() {
+    const branch = document.getElementById('filterBranch').value;
+    const subject = document.getElementById('filterSubject').value.trim();
+    window.location.href = `/api/attendance/export?branch=${branch}&subject=${subject}`;
+  }
 
-      const statusMsg = document.getElementById('statusMsg');
-      statusMsg.innerText = "Capturing Location & Starting Session...";
+  // Load Records On Page Open
+  fetchRecords();
+</script>
 
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-          try {
-            const res = await fetch('/api/session/start', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                branch,
-                subject,
-                teacherCode,
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude
-              })
-            });
-
-            const data = await res.json();
-            alert(data.message);
-            statusMsg.innerText = `🟢 ACTIVE: ${branch} - ${subject} (Passcode: ${teacherCode})`;
-            fetchAttendance();
-          } catch (err) {
-            alert("Error: " + err.message);
-          }
-        }, (err) => {
-          alert("GPS Access Denied: " + err.message);
-          statusMsg.innerText = "❌ GPS Location Access Denied.";
-        }, { enableHighAccuracy: true });
-      } else {
-        alert("Geolocation not supported on this browser.");
-      }
-    }
-
-    function downloadCSV() {
-      const branch = document.getElementById('branchSelect').value;
-      const subject = document.getElementById('subjectInput').value.trim();
-
-      let url = '/api/attendance/export?';
-      if (branch) url += `branch=${encodeURIComponent(branch)}&`;
-      if (subject) url += `subject=${encodeURIComponent(subject)}`;
-
-      window.location.href = url;
-    }
-
-    async function deleteSubjectData() {
-      const branch = document.getElementById('branchSelect').value;
-      const subject = document.getElementById('subjectInput').value.trim();
-
-      if (!subject) {
-        alert("Subject Name enter karein jiska data delete karna hai!");
-        return;
-      }
-
-      if (confirm(`Kya aap "${branch}" ke "${subject}" ka record delete karna chahte hain?`)) {
-        try {
-          const res = await fetch('/api/attendance/delete-subject', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ branch, subject })
-          });
-          const data = await res.json();
-          alert(data.message);
-          fetchAttendance();
-        } catch (err) {
-          alert("Error: " + err.message);
-        }
-      }
-    }
-  </script>
 </body>
 </html>
