@@ -9,12 +9,15 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/attendance', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('MongoDB Connected'))
-  .catch(err => console.error('MongoDB Connection Error:', err));
+// MongoDB Connection with Safe Timeout Options
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/attendance';
+
+mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS: 30000,
+  socketTimeoutMS: 45000,
+})
+.then(() => console.log('MongoDB Connected Successfully!'))
+.catch(err => console.error('MongoDB Connection Error:', err));
 
 // Schemas
 const SessionSchema = new mongoose.Schema({
@@ -23,8 +26,8 @@ const SessionSchema = new mongoose.Schema({
   passcode: String,
   teacherLat: Number,
   teacherLng: Number,
-  radius: { type: Number, default: 100 }, // Radius in meters
-  createdAt: { type: Date, default: Date.now, expires: 3600 } // Auto expire after 1 hr
+  radius: { type: Number, default: 100 },
+  createdAt: { type: Date, default: Date.now, expires: 3600 }
 });
 
 const AttendanceSchema = new mongoose.Schema({
@@ -32,12 +35,9 @@ const AttendanceSchema = new mongoose.Schema({
   branch: String,
   subject: String,
   timestamp: { type: Date, default: Date.now },
-  mode: { type: String, default: 'Online (GPS)' }, // 'Online (GPS)' or 'Manual (Teacher)'
+  mode: { type: String, default: 'Online (GPS)' },
   deviceId: String
 });
-
-// Index to prevent duplicate attendance for same student, subject, branch on same day
-AttendanceSchema.index({ studentId: 1, branch: 1, subject: 1, dateString: 1 });
 
 const Session = mongoose.model('Session', SessionSchema);
 const Attendance = mongoose.model('Attendance', AttendanceSchema);
@@ -57,8 +57,12 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
 // 1. Teacher Starts Session
 app.post('/api/session/start', async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ success: false, message: 'Database connecting... please try again in 5 seconds.' });
+    }
+
     const { branch, subject, passcode, teacherLat, teacherLng, radius } = req.body;
-    await Session.deleteMany({ branch, subject }); // Clear previous active sessions for same subject
+    await Session.deleteMany({ branch, subject });
 
     const session = new Session({
       branch,
@@ -79,6 +83,10 @@ app.post('/api/session/start', async (req, res) => {
 // 2. Student Marks Attendance (GPS)
 app.post('/api/attendance/mark', async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ success: false, message: 'Database connection establishing, please try again.' });
+    }
+
     const { branch, subject, studentId, enteredCode, userLat, userLng, deviceId } = req.body;
 
     const activeSession = await Session.findOne({ branch, subject, passcode: enteredCode });
@@ -86,13 +94,11 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired!' });
     }
 
-    // Check GPS Distance
     const distance = getDistanceInMeters(activeSession.teacherLat, activeSession.teacherLng, userLat, userLng);
     if (distance > activeSession.radius) {
       return res.status(400).json({ success: false, message: `Out of Class Range! (${Math.round(distance)}m away)` });
     }
 
-    // Check Today's Duplicate
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -107,7 +113,6 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Attendance already marked for today!' });
     }
 
-    // Save Attendance
     const newRecord = new Attendance({
       studentId: studentId.trim().toUpperCase(),
       branch,
@@ -126,6 +131,10 @@ app.post('/api/attendance/mark', async (req, res) => {
 // 3. Teacher Manual Attendance Override
 app.post('/api/attendance/manual', async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ success: false, message: 'Database connecting, try again.' });
+    }
+
     const { branch, subject, studentId } = req.body;
     if (!branch || !subject || !studentId) {
       return res.status(400).json({ success: false, message: 'All fields are required!' });
@@ -165,9 +174,8 @@ app.get('/api/attendance/all', async (req, res) => {
     const { branch, subject } = req.query;
     let query = {};
     if (branch && branch !== 'ALL') query.branch = branch;
-    if (subject && subject !== 'ALL') query.subject = new RegExp(`^${subject}$`, 'i');
+    if (subject && subject.trim() !== '') query.subject = new RegExp(`^${subject.trim()}$`, 'i');
 
-    // Sorted Ascending by Student Roll Number
     const records = await Attendance.find(query).sort({ studentId: 1 });
     res.json({ success: true, records });
   } catch (err) {
@@ -181,7 +189,7 @@ app.get('/api/attendance/export', async (req, res) => {
     const { branch, subject } = req.query;
     let query = {};
     if (branch && branch !== 'ALL') query.branch = branch;
-    if (subject && subject !== 'ALL') query.subject = new RegExp(`^${subject}$`, 'i');
+    if (subject && subject.trim() !== '') query.subject = new RegExp(`^${subject.trim()}$`, 'i');
 
     const records = await Attendance.find(query).sort({ studentId: 1 });
 
