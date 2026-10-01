@@ -16,7 +16,14 @@ mongoose.connect(MONGO_URI, {
   serverSelectionTimeoutMS: 30000,
   socketTimeoutMS: 45000,
 })
-.then(() => console.log('MongoDB Connected Successfully!'))
+.then(() => {
+  console.log('MongoDB Connected Successfully!');
+  
+  // Drop old/conflicting indexes automatically to prevent E11000 duplicate key errors
+  Attendance.collection.dropIndexes()
+    .then(() => console.log('Old indexes cleared successfully.'))
+    .catch(err => console.log('Index clear note:', err.message));
+})
 .catch(err => console.error('MongoDB Connection Error:', err));
 
 // Schemas
