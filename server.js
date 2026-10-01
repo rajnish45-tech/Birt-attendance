@@ -62,12 +62,12 @@ app.post('/api/session/start', async (req, res) => {
     }
 
     const { branch, subject, passcode, teacherLat, teacherLng, radius } = req.body;
-    await Session.deleteMany({ branch, subject });
+    await Session.deleteMany({ branch, subject: new RegExp(`^${subject.trim()}$`, 'i') });
 
     const session = new Session({
       branch,
-      subject,
-      passcode,
+      subject: subject.trim(),
+      passcode: passcode.trim(),
       teacherLat,
       teacherLng,
       radius: radius || 100
@@ -89,7 +89,12 @@ app.post('/api/attendance/mark', async (req, res) => {
 
     const { branch, subject, studentId, enteredCode, userLat, userLng, deviceId } = req.body;
 
-    const activeSession = await Session.findOne({ branch, subject, passcode: enteredCode });
+    const activeSession = await Session.findOne({ 
+      branch: branch, 
+      subject: new RegExp(`^${subject.trim()}$`, 'i'), 
+      passcode: enteredCode.trim() 
+    });
+
     if (!activeSession) {
       return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired!' });
     }
@@ -104,8 +109,8 @@ app.post('/api/attendance/mark', async (req, res) => {
 
     const existing = await Attendance.findOne({
       studentId: studentId.trim().toUpperCase(),
-      branch,
-      subject,
+      branch: branch,
+      subject: new RegExp(`^${subject.trim()}$`, 'i'),
       timestamp: { $gte: startOfDay }
     });
 
@@ -115,8 +120,8 @@ app.post('/api/attendance/mark', async (req, res) => {
 
     const newRecord = new Attendance({
       studentId: studentId.trim().toUpperCase(),
-      branch,
-      subject,
+      branch: branch,
+      subject: activeSession.subject,
       mode: 'Online (GPS)',
       deviceId
     });
@@ -145,8 +150,8 @@ app.post('/api/attendance/manual', async (req, res) => {
 
     const existing = await Attendance.findOne({
       studentId: studentId.trim().toUpperCase(),
-      branch,
-      subject,
+      branch: branch,
+      subject: new RegExp(`^${subject.trim()}$`, 'i'),
       timestamp: { $gte: startOfDay }
     });
 
@@ -156,8 +161,8 @@ app.post('/api/attendance/manual', async (req, res) => {
 
     const newRecord = new Attendance({
       studentId: studentId.trim().toUpperCase(),
-      branch,
-      subject,
+      branch: branch,
+      subject: subject.trim(),
       mode: 'Manual (Teacher)'
     });
     await newRecord.save();
@@ -168,7 +173,7 @@ app.post('/api/attendance/manual', async (req, res) => {
   }
 });
 
-// 4. Get Attendance Records with Sorting (Ascending Roll No.)
+// 4. Get Attendance Records (Ascending Roll No.)
 app.get('/api/attendance/all', async (req, res) => {
   try {
     const { branch, subject } = req.query;
@@ -183,7 +188,33 @@ app.get('/api/attendance/all', async (req, res) => {
   }
 });
 
-// 5. Export CSV/Excel
+// 5. Delete Attendance Data for Specific Subject/Branch
+app.delete('/api/attendance/delete', async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ success: false, message: 'Database connecting, try again.' });
+    }
+
+    const { branch, subject } = req.body;
+    if (!branch || !subject) {
+      return res.status(400).json({ success: false, message: 'Branch and Subject are required for deletion!' });
+    }
+
+    const result = await Attendance.deleteMany({
+      branch: branch,
+      subject: new RegExp(`^${subject.trim()}$`, 'i')
+    });
+
+    res.json({ 
+      success: true, 
+      message: `${result.deletedCount} attendance records deleted for ${subject} (${branch})!` 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 6. Export CSV/Excel
 app.get('/api/attendance/export', async (req, res) => {
   try {
     const { branch, subject } = req.query;

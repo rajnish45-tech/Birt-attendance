@@ -19,6 +19,8 @@
     .btn-start:hover { background: #219150; }
     .btn-manual { background: #e67e22; color: white; }
     .btn-manual:hover { background: #d35400; }
+    .btn-delete { background: #c0392b; color: white; }
+    .btn-delete:hover { background: #a93226; }
     .btn-filter { background: #2980b9; color: white; }
     .btn-export { background: #8e44ad; color: white; width: auto; padding: 8px 15px; float: right; margin-bottom: 10px; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; background: white; }
@@ -89,7 +91,34 @@
     </div>
   </div>
 
-  <!-- 3. Class & Subject Filter & Attendance List -->
+  <!-- 3. Delete Subject Attendance Card -->
+  <div class="card" style="border-left: 5px solid #c0392b;">
+    <h3 style="color: #c0392b;">🗑️ Clear / Delete Subject Data</h3>
+    <p style="font-size: 12px; color: #666; margin-top: -8px;">Purana data saaf karne ke liye branch aur subject likh kar delete karein.</p>
+    
+    <div class="grid-2">
+      <div>
+        <label>Branch:</label>
+        <select id="delBranch">
+          <option value="Computer Science">Computer Science</option>
+          <option value="AIML">AIML</option>
+          <option value="EC">EC</option>
+          <option value="EX">EX</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="CIVIL">CIVIL</option>
+        </select>
+      </div>
+      <div>
+        <label>Subject Name:</label>
+        <input type="text" id="delSubject" placeholder="e.g. DBMS">
+      </div>
+    </div>
+
+    <button class="btn-delete" onclick="deleteRecords()">🗑️ Delete Records for this Subject</button>
+    <p id="delMsg" style="margin-top:10px; font-weight:bold;"></p>
+  </div>
+
+  <!-- 4. Class & Subject Filter & Attendance List -->
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <h3>📋 View Attendance & Filter Records</h3>
@@ -189,11 +218,39 @@
 
     if(data.success) {
       document.getElementById('manualStudentId').value = '';
-      fetchRecords(); // Refresh Table
+      fetchRecords();
     }
   }
 
-  // 3. Fetch Records
+  // 3. Delete Subject Records
+  async function deleteRecords() {
+    const branch = document.getElementById('delBranch').value;
+    const subject = document.getElementById('delSubject').value.trim();
+    const msg = document.getElementById('delMsg');
+
+    if(!subject) { alert("Subject Name bharna zaroori hai!"); return; }
+
+    if(!confirm(`Kya aap sach mein ${subject} (${branch}) ka saara attendance data delete karna chahte hain?`)) {
+      return;
+    }
+
+    const res = await fetch('/api/attendance/delete', {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ branch, subject })
+    });
+    const data = await res.json();
+    
+    msg.style.color = data.success ? "green" : "red";
+    msg.innerText = data.message;
+
+    if(data.success) {
+      document.getElementById('delSubject').value = '';
+      fetchRecords();
+    }
+  }
+
+  // 4. Fetch Records
   async function fetchRecords() {
     const branch = document.getElementById('filterBranch').value;
     const subject = document.getElementById('filterSubject').value.trim();
@@ -229,14 +286,13 @@
     });
   }
 
-  // 4. Export CSV
+  // 5. Export CSV
   function exportCSV() {
     const branch = document.getElementById('filterBranch').value;
     const subject = document.getElementById('filterSubject').value.trim();
     window.location.href = `/api/attendance/export?branch=${branch}&subject=${subject}`;
   }
 
-  // Load Records On Page Open
   fetchRecords();
 </script>
 
