@@ -9,7 +9,7 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// MongoDB Connection with Safe Timeout Options
+// MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/attendance';
 
 mongoose.connect(MONGO_URI, {
@@ -18,8 +18,6 @@ mongoose.connect(MONGO_URI, {
 })
 .then(() => {
   console.log('MongoDB Connected Successfully!');
-  
-  // Drop old/conflicting indexes automatically to prevent E11000 duplicate key errors
   Attendance.collection.dropIndexes()
     .then(() => console.log('Old indexes cleared successfully.'))
     .catch(err => console.log('Index clear note:', err.message));
@@ -87,7 +85,7 @@ app.post('/api/session/start', async (req, res) => {
   }
 });
 
-// 2. Student Marks Attendance (GPS)
+// 2. Student Marks Attendance (GPS + Device Lock)
 app.post('/api/attendance/mark', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -96,6 +94,11 @@ app.post('/api/attendance/mark', async (req, res) => {
 
     const { branch, subject, studentId, enteredCode, userLat, userLng, deviceId } = req.body;
 
+    if (!studentId || !enteredCode) {
+      return res.status(400).json({ success: false, message: 'Roll Number and Passcode are required!' });
+    }
+
+    // A. Verify Active Session
     const activeSession = await Session.findOne({ 
       branch: branch, 
       subject: new RegExp(`^${subject.trim()}$`, 'i'), 
@@ -106,6 +109,7 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired!' });
     }
 
+    // B. Verify GPS Geofence Range
     const distance = getDistanceInMeters(activeSession.teacherLat, activeSession.teacherLng, userLat, userLng);
     if (distance > activeSession.radius) {
       return res.status(400).json({ success: false, message: `Out of Class Range! (${Math.round(distance)}m away)` });
@@ -114,23 +118,45 @@ app.post('/api/attendance/mark', async (req, res) => {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const existing = await Attendance.findOne({
-      studentId: studentId.trim().toUpperCase(),
+    const formattedStudentId = studentId.trim().toUpperCase();
+
+    // C. CHECK 1: Roll Number duplicate check for today's class
+    const existingStudent = await Attendance.findOne({
+      studentId: formattedStudentId,
       branch: branch,
       subject: new RegExp(`^${subject.trim()}$`, 'i'),
       timestamp: { $gte: startOfDay }
     });
 
-    if (existing) {
-      return res.status(400).json({ success: false, message: 'Attendance already marked for today!' });
+    if (existingStudent) {
+      return res.status(400).json({ success: false, message: 'Attendance already marked for this Roll Number today!' });
     }
 
+    // D. CHECK 2: DEVICE LOCK CHECK (Proxy Lock)
+    // Prevents one device from marking attendance for multiple students
+    if (deviceId && deviceId.trim() !== '') {
+      const existingDevice = await Attendance.findOne({
+        deviceId: deviceId.trim(),
+        branch: branch,
+        subject: new RegExp(`^${subject.trim()}$`, 'i'),
+        timestamp: { $gte: startOfDay }
+      });
+
+      if (existingDevice) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Proxy Detected! This phone has already been used to mark attendance for another student today.' 
+        });
+      }
+    }
+
+    // E. Save Attendance
     const newRecord = new Attendance({
-      studentId: studentId.trim().toUpperCase(),
+      studentId: formattedStudentId,
       branch: branch,
       subject: activeSession.subject,
       mode: 'Online (GPS)',
-      deviceId
+      deviceId: deviceId ? deviceId.trim() : 'Unknown'
     });
     await newRecord.save();
 
@@ -155,8 +181,10 @@ app.post('/api/attendance/manual', async (req, res) => {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
+    const formattedStudentId = studentId.trim().toUpperCase();
+
     const existing = await Attendance.findOne({
-      studentId: studentId.trim().toUpperCase(),
+      studentId: formattedStudentId,
       branch: branch,
       subject: new RegExp(`^${subject.trim()}$`, 'i'),
       timestamp: { $gte: startOfDay }
@@ -167,20 +195,21 @@ app.post('/api/attendance/manual', async (req, res) => {
     }
 
     const newRecord = new Attendance({
-      studentId: studentId.trim().toUpperCase(),
+      studentId: formattedStudentId,
       branch: branch,
       subject: subject.trim(),
-      mode: 'Manual (Teacher)'
+      mode: 'Manual (Teacher)',
+      deviceId: 'Teacher_Override'
     });
     await newRecord.save();
 
-    res.json({ success: true, message: `Student ${studentId.toUpperCase()} marked Present manually!` });
+    res.json({ success: true, message: `Student ${formattedStudentId} marked Present manually!` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 4. Get Attendance Records (Ascending Roll No.)
+// 4. Get Attendance Records (Proper Numeric Sorting 1, 2, 95, 107...)
 app.get('/api/attendance/all', async (req, res) => {
   try {
     const { branch, subject } = req.query;
@@ -188,14 +217,20 @@ app.get('/api/attendance/all', async (req, res) => {
     if (branch && branch !== 'ALL') query.branch = branch;
     if (subject && subject.trim() !== '') query.subject = new RegExp(`^${subject.trim()}$`, 'i');
 
-    const records = await Attendance.find(query).sort({ studentId: 1 });
+    let records = await Attendance.find(query);
+
+    // Natural Numerical Sorting (Handles numbers like 95, 107, 127 correctly)
+    records.sort((a, b) => {
+      return a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     res.json({ success: true, records });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 5. Delete Attendance Data for Specific Subject/Branch
+// 5. Delete Attendance Data
 app.delete('/api/attendance/delete', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -221,7 +256,7 @@ app.delete('/api/attendance/delete', async (req, res) => {
   }
 });
 
-// 6. Export CSV/Excel
+// 6. Export CSV/Excel (Numeric Sorted)
 app.get('/api/attendance/export', async (req, res) => {
   try {
     const { branch, subject } = req.query;
@@ -229,7 +264,11 @@ app.get('/api/attendance/export', async (req, res) => {
     if (branch && branch !== 'ALL') query.branch = branch;
     if (subject && subject.trim() !== '') query.subject = new RegExp(`^${subject.trim()}$`, 'i');
 
-    const records = await Attendance.find(query).sort({ studentId: 1 });
+    let records = await Attendance.find(query);
+
+    records.sort((a, b) => {
+      return a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     let csv = 'Roll Number,Branch,Subject,Mode,Time\n';
     records.forEach(r => {
