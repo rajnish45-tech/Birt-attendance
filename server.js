@@ -24,15 +24,15 @@ mongoose.connect(MONGO_URI, {
 })
 .catch(err => console.error('MongoDB Connection Error:', err));
 
-// Schemas
+// Schemas (Strict 20m Radius & 10-Minute Expiry)
 const SessionSchema = new mongoose.Schema({
   branch: String,
   subject: String,
   passcode: String,
   teacherLat: Number,
   teacherLng: Number,
-  radius: { type: Number, default: 100 },
-  createdAt: { type: Date, default: Date.now, expires: 3600 }
+  radius: { type: Number, default: 20 }, // Strict 20 meters range
+  createdAt: { type: Date, default: Date.now, expires: 600 } // Auto expires in 10 minutes
 });
 
 const AttendanceSchema = new mongoose.Schema({
@@ -59,7 +59,7 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// 1. Teacher Starts Session
+// 1. Teacher Starts Session (With 20m default radius)
 app.post('/api/session/start', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -75,17 +75,17 @@ app.post('/api/session/start', async (req, res) => {
       passcode: passcode.trim(),
       teacherLat,
       teacherLng,
-      radius: radius || 100
+      radius: radius || 20 // Strict 20 meters enforcement
     });
     await session.save();
 
-    res.json({ success: true, message: `Session started for ${branch} - ${subject}!` });
+    res.json({ success: true, message: `Session started for ${branch} - ${subject} (Valid for 10 mins, 20m range)!` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 2. Student Marks Attendance (GPS + Device Lock)
+// 2. Student Marks Attendance (GPS + 20m Check + Device Lock)
 app.post('/api/attendance/mark', async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -98,7 +98,6 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Roll Number and Passcode are required!' });
     }
 
-    // A. Verify Active Session
     const activeSession = await Session.findOne({ 
       branch: branch, 
       subject: new RegExp(`^${subject.trim()}$`, 'i'), 
@@ -106,13 +105,13 @@ app.post('/api/attendance/mark', async (req, res) => {
     });
 
     if (!activeSession) {
-      return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired!' });
+      return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired (10 mins over)!' });
     }
 
-    // B. Verify GPS Geofence Range
+    // Strict 20 Meter Range Check
     const distance = getDistanceInMeters(activeSession.teacherLat, activeSession.teacherLng, userLat, userLng);
     if (distance > activeSession.radius) {
-      return res.status(400).json({ success: false, message: `Out of Class Range! (${Math.round(distance)}m away)` });
+      return res.status(400).json({ success: false, message: `Out of Class Range! You are ${Math.round(distance)}m away (Max allowed: 20m)` });
     }
 
     const startOfDay = new Date();
@@ -120,7 +119,7 @@ app.post('/api/attendance/mark', async (req, res) => {
 
     const formattedStudentId = studentId.trim().toUpperCase();
 
-    // C. CHECK 1: Roll Number duplicate check for today's class
+    // Check Duplicate Roll Number for Today
     const existingStudent = await Attendance.findOne({
       studentId: formattedStudentId,
       branch: branch,
@@ -132,8 +131,7 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Attendance already marked for this Roll Number today!' });
     }
 
-    // D. CHECK 2: DEVICE LOCK CHECK (Proxy Lock)
-    // Prevents one device from marking attendance for multiple students
+    // Check Device Lock (Proxy Prevention)
     if (deviceId && deviceId.trim() !== '') {
       const existingDevice = await Attendance.findOne({
         deviceId: deviceId.trim(),
@@ -145,12 +143,11 @@ app.post('/api/attendance/mark', async (req, res) => {
       if (existingDevice) {
         return res.status(400).json({ 
           success: false, 
-          message: 'Proxy Detected! This phone has already been used to mark attendance for another student today.' 
+          message: 'Proxy Detected! This phone has already been used to mark attendance today.' 
         });
       }
     }
 
-    // E. Save Attendance
     const newRecord = new Attendance({
       studentId: formattedStudentId,
       branch: branch,
@@ -209,7 +206,7 @@ app.post('/api/attendance/manual', async (req, res) => {
   }
 });
 
-// 4. Get Attendance Records (Proper Numeric Sorting 1, 2, 95, 107...)
+// 4. Get Attendance Records (Numeric Sorted)
 app.get('/api/attendance/all', async (req, res) => {
   try {
     const { branch, subject } = req.query;
@@ -219,7 +216,6 @@ app.get('/api/attendance/all', async (req, res) => {
 
     let records = await Attendance.find(query);
 
-    // Natural Numerical Sorting (Handles numbers like 95, 107, 127 correctly)
     records.sort((a, b) => {
       return a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' });
     });
@@ -256,7 +252,7 @@ app.delete('/api/attendance/delete', async (req, res) => {
   }
 });
 
-// 6. Export CSV/Excel (Numeric Sorted)
+// 6. Export CSV/Excel
 app.get('/api/attendance/export', async (req, res) => {
   try {
     const { branch, subject } = req.query;
