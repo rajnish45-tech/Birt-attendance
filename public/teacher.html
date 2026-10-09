@@ -3,362 +3,242 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Teacher & HOD Panel - Attendance System</title>
+  <title>Teacher Panel - Smart Attendance</title>
   <style>
-    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background: #f4f7f9; margin: 0; padding: 20px; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body { background: #f0f4f8; margin: 0; padding: 20px; }
     .container { max-width: 1050px; margin: auto; }
-    .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); margin-bottom: 20px; }
-    h2, h3 { margin-top: 0; color: #2c3e50; }
+    .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px; }
+    .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
     @media (max-width: 650px) { .grid-2 { grid-template-columns: 1fr; } }
-    label { font-weight: bold; font-size: 14px; margin-bottom: 5px; display: block; color: #555; }
-    input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
-    button { width: 100%; padding: 11px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.2s; }
-    .btn-start { background: #27ae60; color: white; }
-    .btn-start:hover { background: #219150; }
-    .btn-manual { background: #e67e22; color: white; }
-    .btn-manual:hover { background: #d35400; }
-    .btn-delete { background: #c0392b; color: white; }
-    .btn-delete:hover { background: #a93226; }
-    .btn-filter { background: #2980b9; color: white; }
-    .btn-export { background: #8e44ad; color: white; width: auto; padding: 8px 15px; float: right; margin-bottom: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; }
-    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
-    th { background: #34495e; color: white; }
-    tr:nth-child(even) { background: #f8f9fa; }
-    .badge-gps { background: #27ae60; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
-    .badge-manual { background: #e67e22; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
-    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-    .subject-group-card { background: #ffffff; border: 1px solid #e2e8f0; border-left: 5px solid #2980b9; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-    .subject-group-title { font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-    .live-indicator { font-size: 12px; color: #27ae60; font-weight: bold; display: inline-flex; align-items: center; gap: 5px; }
-    .dot { height: 9px; width: 9px; background-color: #27ae60; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    label { font-weight: bold; font-size: 13px; margin-bottom: 4px; display: block; color: #444; }
+    input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    button { padding: 10px 15px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+    .btn-start { background: #2e7d32; color: white; width: 100%; }
+    .btn-manual { background: #ed6c02; color: white; width: 100%; }
+    .btn-delete { background: #d32f2f; color: white; padding: 5px 10px; font-size: 12px; }
+    .btn-export { background: #0288d1; color: white; padding: 5px 10px; font-size: 12px; }
+    .btn-logout { background: #c0392b; color: white; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #e0e0e0; padding: 8px; font-size: 13px; text-align: left; }
+    th { background: #f5f5f5; }
+    .sheet-card { border: 1px solid #e0e0e0; border-left: 5px solid #0288d1; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: white; }
+    .sheet-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 
 <div class="container">
-  
-  <div class="top-bar">
-    <h2>🎓 Teacher & HOD Dashboard</h2>
-    <a href="/index.html" style="text-decoration:none; color:#2980b9; font-weight:bold;">← Student Panel</a>
+
+  <div class="header">
+    <div>
+      <h2 style="margin:0;" id="welcomeText">Welcome Teacher</h2>
+      <small style="color:#666;" id="branchText"></small>
+    </div>
+    <button class="btn-logout" onclick="logout()">Logout</button>
   </div>
 
   <div class="grid-2">
-    <!-- 1. Start Class Session -->
+    <!-- Start Live GPS Session -->
     <div class="card">
-      <h3>📍 Start Live Class Session</h3>
-      <label>Select Branch:</label>
-      <select id="startBranch">
-        <option value="Computer Science">Computer Science</option>
-        <option value="AIML">AIML</option>
-        <option value="EC">EC</option>
-        <option value="EX">EX</option>
-        <option value="Mechanical">Mechanical</option>
-        <option value="CIVIL">CIVIL</option>
-      </select>
-
-      <label>Subject Name:</label>
-      <input type="text" id="startSubject" placeholder="e.g. Java, DBMS, Mathematics">
+      <h3>📍 Start Session (GPS - 20m Range)</h3>
+      <label>Subject:</label>
+      <select id="startSubject"></select>
 
       <label>4-Digit Passcode:</label>
-      <input type="number" id="startCode" placeholder="e.g. 4821">
+      <input type="number" id="startCode" placeholder="e.g. 5821">
 
-      <button class="btn-start" onclick="startSession()">▶ Start Session (GPS Lock - 20m)</button>
-      <p id="startMsg" style="margin-top:10px; font-weight:bold;"></p>
+      <button class="btn-start" onclick="startSession()">▶ Start Session (10 Mins Expiry)</button>
+      <p id="startMsg" style="margin-top:8px; font-weight:bold;"></p>
     </div>
 
-    <!-- 2. Manual Attendance Override -->
+    <!-- Manual Override -->
     <div class="card">
-      <h3>🛠️ Manual Attendance Override</h3>
-      <p style="font-size: 12px; color: #666; margin-top: -8px;">Network issue/special permission wale student ke liye.</p>
-      
-      <label>Branch:</label>
-      <select id="manualBranch">
-        <option value="Computer Science">Computer Science</option>
-        <option value="AIML">AIML</option>
-        <option value="EC">EC</option>
-        <option value="EX">EX</option>
-        <option value="Mechanical">Mechanical</option>
-        <option value="CIVIL">CIVIL</option>
-      </select>
+      <h3>🛠️ Manual Attendance</h3>
+      <label>Subject:</label>
+      <select id="manualSubject"></select>
 
-      <label>Subject Name:</label>
-      <input type="text" id="manualSubject" placeholder="e.g. Java">
+      <label>Student Roll Number:</label>
+      <input type="text" id="manualRoll" placeholder="e.g. 102">
 
-      <label>Student Roll Number / ID:</label>
-      <input type="text" id="manualStudentId" placeholder="e.g. 105 or CS01">
-
-      <button class="btn-manual" onclick="markManual()">✅ Mark Present Manually</button>
-      <p id="manualMsg" style="margin-top:10px; font-weight:bold;"></p>
+      <button class="btn-manual" onclick="markManual()">✅ Mark Present</button>
+      <p id="manualMsg" style="margin-top:8px; font-weight:bold;"></p>
     </div>
   </div>
 
-  <!-- 3. Delete Subject Attendance Card -->
-  <div class="card" style="border-left: 5px solid #c0392b;">
-    <h3 style="color: #c0392b;">🗑️ Clear / Delete Subject Data</h3>
-    <p style="font-size: 12px; color: #666; margin-top: -8px;">Purana data saaf karne ke liye branch aur subject likh kar delete karein.</p>
-    
-    <div class="grid-2">
-      <div>
-        <label>Branch:</label>
-        <select id="delBranch">
-          <option value="Computer Science">Computer Science</option>
-          <option value="AIML">AIML</option>
-          <option value="EC">EC</option>
-          <option value="EX">EX</option>
-          <option value="Mechanical">Mechanical</option>
-          <option value="CIVIL">CIVIL</option>
-        </select>
-      </div>
-      <div>
-        <label>Subject Name:</label>
-        <input type="text" id="delSubject" placeholder="e.g. DBMS">
-      </div>
-    </div>
-
-    <button class="btn-delete" onclick="deleteRecords()">🗑️ Delete Records for this Subject</button>
-    <p id="delMsg" style="margin-top:10px; font-weight:bold;"></p>
-  </div>
-
-  <!-- 4. Filter & Grouped Subject-wise Attendance List -->
+  <!-- Attendance Sheets View -->
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center;">
-      <h3>📋 View Attendance Records <span class="live-indicator"><span class="dot"></span> LIVE Auto-Syncing</span></h3>
-      <button class="btn-export" onclick="exportCSV()">📥 Export Excel (CSV)</button>
-    </div>
-
-    <div class="grid-2" style="grid-template-columns: 1fr 1fr 100px; gap: 10px;">
+      <h3>📋 My Class Attendance Sheets</h3>
       <div>
-        <label>Filter Branch:</label>
-        <select id="filterBranch" onchange="fetchRecords()">
-          <option value="ALL">All Branches</option>
-          <option value="Computer Science">Computer Science</option>
-          <option value="AIML">AIML</option>
-          <option value="EC">EC</option>
-          <option value="EX">EX</option>
-          <option value="Mechanical">Mechanical</option>
-          <option value="CIVIL">CIVIL</option>
-        </select>
-      </div>
-
-      <div>
-        <label>Filter Subject:</label>
-        <input type="text" id="filterSubject" placeholder="Search specific subject or leave blank" oninput="fetchRecords()">
-      </div>
-
-      <div style="display:flex; align-items:flex-end;">
-        <button class="btn-filter" onclick="fetchRecords()">🔍 Search</button>
+        <label style="display:inline; margin-right:5px;">Filter Date:</label>
+        <input type="date" id="filterDate" onchange="fetchMyRecords()" style="width:auto; display:inline;">
       </div>
     </div>
 
-    <p style="font-size:13px; color:#555;">Total Records Displayed: <b id="totalCount">0</b> (Grouped cleanly by Subject)</p>
-
-    <!-- Container where Subject Cards will render dynamically -->
-    <div id="subjectGroupsContainer">
-      <div style="text-align:center; padding: 20px; color: #777;">Loading Records...</div>
+    <div id="sheetsContainer">
+      <p style="text-align:center; color:#777;">Loading Sheets...</p>
     </div>
-
   </div>
 
 </div>
 
 <script>
-  let isFetching = false;
+  const user = JSON.parse(localStorage.getItem('user'));
+  if (!user || user.role !== 'TEACHER') {
+    window.location.href = '/login.html';
+  }
 
-  // 1. Start Session
-  function startSession() {
-    const branch = document.getElementById('startBranch').value;
-    const subject = document.getElementById('startSubject').value.trim();
+  document.getElementById('welcomeText').innerText = `Welcome, ${user.name}`;
+  document.getElementById('branchText').innerText = `Branch: ${user.branch} | Private Panel`;
+
+  // Populate Teacher's Subjects
+  const subjSelects = [document.getElementById('startSubject'), document.getElementById('manualSubject')];
+  user.subjects.forEach(s => {
+    subjSelects.forEach(sel => {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.innerText = s;
+      sel.appendChild(opt);
+    });
+  });
+
+  // Set Default Today Date
+  document.getElementById('filterDate').value = new Date().toISOString().split('T')[0];
+
+  function logout() {
+    localStorage.removeItem('user');
+    window.location.href = '/login.html';
+  }
+
+  async function startSession() {
+    const subject = document.getElementById('startSubject').value;
     const passcode = document.getElementById('startCode').value.trim();
     const msg = document.getElementById('startMsg');
 
-    if(!subject || !passcode) { alert("Subject Name aur Passcode bharna zaroori hai!"); return; }
+    if (!passcode) { alert('Enter Passcode!'); return; }
 
-    if(navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(async (pos) => {
-        try {
-          const res = await fetch('/api/session/start', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              branch, subject, passcode,
-              teacherLat: pos.coords.latitude,
-              teacherLng: pos.coords.longitude,
-              radius: 20
-            })
-          });
-          const data = await res.json();
-          msg.style.color = data.success ? "green" : "red";
-          msg.innerText = data.message;
-        } catch(e) {
-          msg.style.color = "red";
-          msg.innerText = "Error starting session. Check network!";
-        }
-      }, (err) => { alert("Location required: " + err.message); });
-    }
-  }
-
-  // 2. Mark Manual
-  async function markManual() {
-    const branch = document.getElementById('manualBranch').value;
-    const subject = document.getElementById('manualSubject').value.trim();
-    const studentId = document.getElementById('manualStudentId').value.trim();
-    const msg = document.getElementById('manualMsg');
-
-    if(!subject || !studentId) { alert("Subject aur Student Roll No dono bharein!"); return; }
-
-    try {
-      const res = await fetch('/api/attendance/manual', {
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const res = await fetch('/api/session/start', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ branch, subject, studentId })
+        body: JSON.stringify({
+          branch: user.branch,
+          subject,
+          passcode,
+          teacherId: user.userId,
+          teacherLat: pos.coords.latitude,
+          teacherLng: pos.coords.longitude
+        })
       });
       const data = await res.json();
-      msg.style.color = data.success ? "green" : "red";
+      msg.style.color = data.success ? 'green' : 'red';
       msg.innerText = data.message;
-
-      if(data.success) {
-        document.getElementById('manualStudentId').value = '';
-        fetchRecords();
-      }
-    } catch(e) {
-      msg.style.color = "red";
-      msg.innerText = "Error performing manual override.";
-    }
+    }, (err) => alert("Location Error: " + err.message));
   }
 
-  // 3. Delete Subject Records
-  async function deleteRecords() {
-    const branch = document.getElementById('delBranch').value;
-    const subject = document.getElementById('delSubject').value.trim();
-    const msg = document.getElementById('delMsg');
+  async function markManual() {
+    const subject = document.getElementById('manualSubject').value;
+    const studentId = document.getElementById('manualRoll').value.trim();
+    const msg = document.getElementById('manualMsg');
 
-    if(!subject) { alert("Subject Name bharna zaroori hai!"); return; }
+    if (!studentId) { alert('Enter Roll Number!'); return; }
 
-    if(!confirm(`Kya aap sach mein ${subject} (${branch}) ka saara attendance data delete karna chahte hain?`)) {
+    const res = await fetch('/api/attendance/manual', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        branch: user.branch,
+        subject,
+        studentId,
+        teacherId: user.userId,
+        dateStr: document.getElementById('filterDate').value
+      })
+    });
+    const data = await res.json();
+    msg.style.color = data.success ? 'green' : 'red';
+    msg.innerText = data.message;
+    if (data.success) fetchMyRecords();
+  }
+
+  async function fetchMyRecords() {
+    const dateStr = document.getElementById('filterDate').value;
+    const container = document.getElementById('sheetsContainer');
+
+    const res = await fetch(`/api/attendance/query?teacherId=${user.userId}&role=TEACHER&branch=${user.branch}&dateStr=${dateStr}`);
+    const data = await res.json();
+
+    if (!data.records || data.records.length === 0) {
+      container.innerHTML = `<div style="text-align:center; padding:20px; color:#777;">No attendance records found for this date.</div>`;
       return;
     }
 
-    try {
-      const res = await fetch('/api/attendance/delete', {
-        method: 'DELETE',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ branch, subject })
-      });
-      const data = await res.json();
-      
-      msg.style.color = data.success ? "green" : "red";
-      msg.innerText = data.message;
+    // Group by Subject
+    const groups = {};
+    data.records.forEach(r => {
+      if (!groups[r.subject]) groups[r.subject] = [];
+      groups[r.subject].push(r);
+    });
 
-      if(data.success) {
-        document.getElementById('delSubject').value = '';
-        fetchRecords();
-      }
-    } catch(e) {
-      msg.style.color = "red";
-      msg.innerText = "Error deleting records.";
-    }
-  }
-
-  // 4. Fetch & Group Records Cleanly by Subject
-  async function fetchRecords() {
-    if (isFetching) return; // Prevent simultaneous overlapping calls
-    isFetching = true;
-
-    const branch = document.getElementById('filterBranch').value;
-    const subject = document.getElementById('filterSubject').value.trim();
-
-    try {
-      const res = await fetch(`/api/attendance/all?branch=${branch}&subject=${subject}`);
-      const data = await res.json();
-
-      const container = document.getElementById('subjectGroupsContainer');
-      document.getElementById('totalCount').innerText = data.records ? data.records.length : 0;
-
-      if (!data.success || !data.records || data.records.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding: 25px; background:#f9f9f9; border-radius:8px; color: #777;">No attendance records found.</div>`;
-        isFetching = false;
-        return;
-      }
-
-      // Group records by Subject Name (Case-Insensitive grouping)
-      const groups = {};
-      data.records.forEach(r => {
-        const key = r.subject ? r.subject.toUpperCase() : 'UNSPECIFIED';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(r);
-      });
-
-      let html = '';
-      for (const subjName in groups) {
-        const recs = groups[subjName];
-        html += `
-          <div class="subject-group-card">
-            <div class="subject-group-title">
-              <span>📘 Subject: <span style="color:#2980b9;">${subjName}</span></span>
-              <span style="font-size:14px; background:#e1f5fe; color:#0288d1; padding:4px 10px; border-radius:12px;">Total: ${recs.length} Students</span>
+    let html = '';
+    for (let subj in groups) {
+      const recs = groups[subj];
+      html += `
+        <div class="sheet-card">
+          <div class="sheet-title">
+            <div>
+              <b style="font-size:16px;">📘 ${subj}</b>
+              <span style="font-size:12px; color:#555; margin-left:10px;">Date: ${dateStr} | Total: ${recs.length} Students</span>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Roll Number</th>
-                  <th>Branch</th>
-                  <th>Mode</th>
-                  <th>Marked Time</th>
-                </tr>
-              </thead>
-              <tbody>
-        `;
-
-        recs.forEach((r, idx) => {
-          const time = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const badge = r.mode.includes('Manual') 
-            ? `<span class="badge-manual">🛠️ Manual</span>` 
-            : `<span class="badge-gps">📍 Online GPS</span>`;
-
-          html += `
-            <tr>
-              <td>${idx + 1}</td>
-              <td><b>${r.studentId}</b></td>
-              <td>${r.branch}</td>
-              <td>${badge}</td>
-              <td>${time}</td>
-            </tr>
-          `;
-        });
-
-        html += `
-              </tbody>
-            </table>
+            <div>
+              <button class="btn-export" onclick="exportSheet('${subj}', '${dateStr}')">📥 Download Sheet</button>
+              <button class="btn-delete" onclick="deleteSheet('${subj}', '${dateStr}')">🗑️ Delete Sheet</button>
+            </div>
           </div>
-        `;
-      }
+          <table>
+            <thead>
+              <tr><th>#</th><th>Roll Number</th><th>Mode</th><th>Time</th></tr>
+            </thead>
+            <tbody>
+      `;
 
-      container.innerHTML = html;
+      recs.forEach((r, idx) => {
+        const time = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        html += `<tr><td>${idx+1}</td><td><b>${r.studentId}</b></td><td>${r.mode}</td><td>${time}</td></tr>`;
+      });
 
-    } catch (err) {
-      console.error("Auto-sync fetch error:", err);
-    } finally {
-      isFetching = false;
+      html += `</tbody></table></div>`;
     }
+
+    container.innerHTML = html;
   }
 
-  // 5. Export CSV
-  function exportCSV() {
-    const branch = document.getElementById('filterBranch').value;
-    const subject = document.getElementById('filterSubject').value.trim();
-    window.location.href = `/api/attendance/export?branch=${branch}&subject=${subject}`;
+  function exportSheet(subj, dateStr) {
+    window.location.href = `/api/attendance/export-sheet?teacherId=${user.userId}&role=TEACHER&branch=${user.branch}&subject=${subj}&dateStr=${dateStr}`;
   }
 
-  // Initial Fetch on Load
-  fetchRecords();
+  async function deleteSheet(subj, dateStr) {
+    if (!confirm(`Are you sure you want to delete attendance sheet for ${subj} on ${dateStr}?`)) return;
 
-  // Auto Refresh Interval: Syncs records automatically every 4 seconds without reloading page!
-  setInterval(fetchRecords, 4000);
+    const res = await fetch('/api/attendance/delete-sheet', {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        branch: user.branch,
+        subject: subj,
+        dateStr: dateStr,
+        teacherId: user.userId,
+        role: 'TEACHER'
+      })
+    });
+    const data = await res.json();
+    alert(data.message);
+    fetchMyRecords();
+  }
+
+  fetchMyRecords();
+  setInterval(fetchMyRecords, 5000);
 </script>
 
 </body>
