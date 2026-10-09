@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HOD Master Control Panel</title>
+  <title>HOD Master Portal</title>
   <style>
     * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
     body { background: #1a202c; color: #edf2f7; margin: 0; padding: 20px; }
@@ -30,17 +30,20 @@
   <div class="card">
     <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
       <div>
-        <label>Branch:</label>
+        <label>Filter Branch:</label>
         <select id="filterBranch" onchange="fetchRecords()">
           <option value="ALL">All Branches</option>
           <option value="Computer Science">Computer Science</option>
           <option value="AIML">AIML</option>
           <option value="EC">EC</option>
+          <option value="EX">EX</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="CIVIL">CIVIL</option>
         </select>
       </div>
 
       <div>
-        <label>Date:</label>
+        <label>Filter Date:</label>
         <input type="date" id="filterDate" onchange="fetchRecords()">
       </div>
 
@@ -74,11 +77,13 @@
     document.getElementById('totalCount').innerText = data.records ? data.records.length : 0;
 
     let html = `<table><thead><tr><th>#</th><th>Roll No</th><th>Branch</th><th>Subject</th><th>Mode</th><th>Time</th></tr></thead><tbody>`;
-    if (data.records) {
+    if (data.records && data.records.length > 0) {
       data.records.forEach((r, idx) => {
         const time = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         html += `<tr><td>${idx+1}</td><td><b>${r.studentId}</b></td><td>${r.branch}</td><td>${r.subject}</td><td>${r.mode}</td><td>${time}</td></tr>`;
       });
+    } else {
+      html += `<tr><td colspan="6" style="text-align:center;">No records found.</td></tr>`;
     }
     html += `</tbody></table>`;
     document.getElementById('hodRecords').innerHTML = html;

@@ -18,22 +18,19 @@ mongoose.connect(MONGO_URI, {
 })
 .then(() => {
   console.log('MongoDB Connected Successfully!');
-  Attendance.collection.dropIndexes()
-    .then(() => console.log('Old indexes cleared successfully.'))
-    .catch(err => console.log('Index clear note:', err.message));
 })
 .catch(err => console.error('MongoDB Connection Error:', err));
 
 // SCHEMAS
 
-// 1. User Schema (Teachers & HOD)
+// 1. User Schema (Self-Registration Enabled)
 const UserSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   name: { type: String, required: true },
   role: { type: String, enum: ['TEACHER', 'HOD'], default: 'TEACHER' },
   branch: { type: String, required: true },
-  subjects: [String] // Array of subjects assigned to teacher
+  subjects: [String]
 });
 
 // 2. Active Session Schema (Strict 20m & 10m TTL)
@@ -45,7 +42,7 @@ const SessionSchema = new mongoose.Schema({
   teacherLat: Number,
   teacherLng: Number,
   radius: { type: Number, default: 20 },
-  createdAt: { type: Date, default: Date.now, expires: 600 } // Auto-expire after 10 mins
+  createdAt: { type: Date, default: Date.now, expires: 600 }
 });
 
 // 3. Attendance Record Schema
@@ -54,7 +51,7 @@ const AttendanceSchema = new mongoose.Schema({
   branch: { type: String, required: true },
   subject: { type: String, required: true },
   teacherId: { type: String },
-  dateStr: { type: String, required: true }, // Format: YYYY-MM-DD
+  dateStr: { type: String, required: true },
   timestamp: { type: Date, default: Date.now },
   mode: { type: String, default: 'Online (GPS)' },
   deviceId: { type: String }
@@ -76,7 +73,6 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Get Today's Date String (YYYY-MM-DD)
 function getTodayDateString() {
   const now = new Date();
   const year = now.getFullYear();
@@ -87,12 +83,43 @@ function getTodayDateString() {
 
 // ================= API ROUTES ================= //
 
-// 1. LOGIN API (Teachers & HOD)
+// 1. TEACHER SIGNUP / REGISTER API
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { userId, password, name, branch, subjects } = req.body;
+    if (!userId || !password || !name || !branch) {
+      return res.status(400).json({ success: false, message: 'All fields are required!' });
+    }
+
+    const existing = await User.findOne({ userId: userId.trim() });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'UserId already exists! Choose another.' });
+    }
+
+    const subjectList = subjects ? subjects.split(',').map(s => s.trim()).filter(s => s) : [];
+
+    const newUser = new User({
+      userId: userId.trim(),
+      password: password.trim(),
+      name: name.trim(),
+      role: 'TEACHER',
+      branch: branch.trim(),
+      subjects: subjectList
+    });
+    await newUser.save();
+
+    res.json({ success: true, message: 'Registration Successful! You can now login.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 2. LOGIN API
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { userId, password } = req.body;
     if (!userId || !password) {
-      return res.status(400).json({ success: false, message: 'UserId and Password are required!' });
+      return res.status(400).json({ success: false, message: 'UserId and Password required!' });
     }
 
     const user = await User.findOne({ userId: userId.trim() });
@@ -116,12 +143,12 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// 2. TEACHER STARTS LIVE SESSION
+// 3. START SESSION
 app.post('/api/session/start', async (req, res) => {
   try {
     const { branch, subject, passcode, teacherLat, teacherLng, teacherId } = req.body;
     if (!branch || !subject || !passcode) {
-      return res.status(400).json({ success: false, message: 'Branch, Subject, and Passcode are required!' });
+      return res.status(400).json({ success: false, message: 'Branch, Subject & Passcode required!' });
     }
 
     await Session.deleteMany({ branch, subject: new RegExp(`^${subject.trim()}$`, 'i') });
@@ -137,13 +164,13 @@ app.post('/api/session/start', async (req, res) => {
     });
     await session.save();
 
-    res.json({ success: true, message: `Session started for ${subject} (10 Min Expiry, 20m Range)!` });
+    res.json({ success: true, message: `Session started for ${branch} - ${subject} (10 Mins Expiry, 20m Range)!` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 3. STUDENT MARKS ATTENDANCE
+// 4. STUDENT MARK ATTENDANCE
 app.post('/api/attendance/mark', async (req, res) => {
   try {
     const { branch, subject, studentId, enteredCode, userLat, userLng, deviceId } = req.body;
@@ -159,10 +186,10 @@ app.post('/api/attendance/mark', async (req, res) => {
     });
 
     if (!activeSession) {
-      return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired (10 mins limit over)!' });
+      return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired (10 mins over)!' });
     }
 
-    // Geofencing Check (20m Range)
+    // Geofence
     const distance = getDistanceInMeters(activeSession.teacherLat, activeSession.teacherLng, userLat, userLng);
     if (distance > activeSession.radius) {
       return res.status(400).json({ success: false, message: `Out of Class Range! You are ${Math.round(distance)}m away (Max allowed: 20m)` });
@@ -171,7 +198,7 @@ app.post('/api/attendance/mark', async (req, res) => {
     const todayStr = getTodayDateString();
     const formattedStudentId = studentId.trim().toUpperCase();
 
-    // Prevent Duplicate Roll Number for Today
+    // Prevent Duplicates
     const existingStudent = await Attendance.findOne({
       studentId: formattedStudentId,
       branch: branch,
@@ -183,7 +210,7 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Attendance already marked for this Roll Number today!' });
     }
 
-    // Prevent Proxy (Device Locking)
+    // Proxy Lock
     if (deviceId && deviceId.trim() !== '') {
       const existingDevice = await Attendance.findOne({
         deviceId: deviceId.trim(),
@@ -193,10 +220,7 @@ app.post('/api/attendance/mark', async (req, res) => {
       });
 
       if (existingDevice) {
-        return res.status(400).json({
-          success: false,
-          message: 'Proxy Detected! This mobile phone has already been used to mark attendance today.'
-        });
+        return res.status(400).json({ success: false, message: 'Proxy Detected! This device has already marked attendance today.' });
       }
     }
 
@@ -217,12 +241,12 @@ app.post('/api/attendance/mark', async (req, res) => {
   }
 });
 
-// 4. MANUAL OVERRIDE BY TEACHER
+// 5. MANUAL OVERRIDE
 app.post('/api/attendance/manual', async (req, res) => {
   try {
     const { branch, subject, studentId, teacherId, dateStr } = req.body;
     if (!branch || !subject || !studentId) {
-      return res.status(400).json({ success: false, message: 'Branch, Subject and Student ID are required!' });
+      return res.status(400).json({ success: false, message: 'Branch, Subject & Roll Number required!' });
     }
 
     const targetDate = dateStr || getTodayDateString();
@@ -236,7 +260,7 @@ app.post('/api/attendance/manual', async (req, res) => {
     });
 
     if (existing) {
-      return res.status(400).json({ success: false, message: 'Student is already marked Present for this date!' });
+      return res.status(400).json({ success: false, message: 'Student already marked Present for this date!' });
     }
 
     const newRecord = new Attendance({
@@ -256,7 +280,7 @@ app.post('/api/attendance/manual', async (req, res) => {
   }
 });
 
-// 5. FETCH ATTENDANCE RECORDS (With Teacher Privacy & Date Filtering)
+// 6. FETCH RECORDS (Strict Privacy for Teachers)
 app.get('/api/attendance/query', async (req, res) => {
   try {
     const { branch, subject, teacherId, role, dateStr } = req.query;
@@ -264,7 +288,6 @@ app.get('/api/attendance/query', async (req, res) => {
 
     if (role === 'TEACHER') {
       if (teacherId) query.teacherId = teacherId;
-      if (branch) query.branch = branch;
     } else if (role === 'HOD') {
       if (branch && branch !== 'ALL') query.branch = branch;
     }
@@ -278,7 +301,6 @@ app.get('/api/attendance/query', async (req, res) => {
     }
 
     let records = await Attendance.find(query);
-
     records.sort((a, b) => a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' }));
 
     res.json({ success: true, records });
@@ -287,23 +309,17 @@ app.get('/api/attendance/query', async (req, res) => {
   }
 });
 
-// 6. DELETE SPECIFIC SHEET (By Date & Subject)
+// 7. DELETE SHEET
 app.delete('/api/attendance/delete-sheet', async (req, res) => {
   try {
     const { branch, subject, dateStr, teacherId, role } = req.body;
-    if (!branch || !subject || !dateStr) {
-      return res.status(400).json({ success: false, message: 'Branch, Subject, and Date are required for deletion!' });
-    }
-
     let filter = {
       branch: branch,
       subject: new RegExp(`^${subject.trim()}$`, 'i'),
       dateStr: dateStr
     };
 
-    if (role === 'TEACHER' && teacherId) {
-      filter.teacherId = teacherId;
-    }
+    if (role === 'TEACHER' && teacherId) filter.teacherId = teacherId;
 
     const result = await Attendance.deleteMany(filter);
     res.json({ success: true, message: `Deleted ${result.deletedCount} records for ${subject} on ${dateStr}!` });
@@ -312,7 +328,7 @@ app.delete('/api/attendance/delete-sheet', async (req, res) => {
   }
 });
 
-// 7. EXPORT SPECIFIC DATE/SUBJECT CSV
+// 8. EXPORT CSV
 app.get('/api/attendance/export-sheet', async (req, res) => {
   try {
     const { branch, subject, dateStr, teacherId, role } = req.query;
@@ -340,19 +356,22 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
   }
 });
 
-// SEED INITIAL TEACHERS & HOD DEMO ACCOUNTS
-async function seedUsers() {
-  const count = await User.countDocuments();
-  if (count === 0) {
-    await User.create([
-      { userId: 'hod_cs', password: '123', name: 'Dr. Sharma (HOD)', role: 'HOD', branch: 'Computer Science', subjects: [] },
-      { userId: 'teacher_java', password: '123', name: 'Prof. Verma', role: 'TEACHER', branch: 'Computer Science', subjects: ['Java', 'DBMS'] },
-      { userId: 'teacher_os', password: '123', name: 'Prof. Gupta', role: 'TEACHER', branch: 'Computer Science', subjects: ['OS', 'Networking'] }
-    ]);
-    console.log('Default HOD & Teacher accounts created!');
+// SEED HOD MASTER ACCOUNT
+async function seedMaster() {
+  const hod = await User.findOne({ userId: 'hod_cs' });
+  if (!hod) {
+    await User.create({
+      userId: 'hod_cs',
+      password: '123',
+      name: 'Dr. Sharma (HOD)',
+      role: 'HOD',
+      branch: 'ALL',
+      subjects: []
+    });
+    console.log('Default HOD Account Created!');
   }
 }
-seedUsers();
+seedMaster();
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
