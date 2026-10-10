@@ -31,12 +31,23 @@
 
 <div class="container">
 
+  <!-- Header Section -->
   <div class="header">
     <div>
       <h2 style="margin:0;" id="welcomeText">Welcome Teacher</h2>
       <small style="color:#666;" id="branchText"></small>
     </div>
     <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+
+  <!-- Manage My Subjects Section -->
+  <div class="card">
+    <h3 style="margin-top:0;">📚 Manage My Subjects</h3>
+    <div style="display:flex; gap:10px;">
+      <input type="text" id="newSubjInput" placeholder="Enter New Subject Name (e.g. Python, COA)" style="margin-bottom:0;">
+      <button onclick="addNewSubject()" style="background:#27ae60; color:white; width:auto; white-space:nowrap;">➕ Add Subject</button>
+    </div>
+    <p id="subjMsg" style="margin-top:8px; font-weight:bold; font-size:13px; margin-bottom:0;"></p>
   </div>
 
   <div class="grid-2">
@@ -94,15 +105,26 @@
   document.getElementById('branchText').innerText = `Branch: ${user.branch} | Private Panel`;
 
   // Populate Teacher's Subjects
-  const subjSelects = [document.getElementById('startSubject'), document.getElementById('manualSubject')];
-  user.subjects.forEach(s => {
+  function loadSubjects() {
+    const subjSelects = [document.getElementById('startSubject'), document.getElementById('manualSubject')];
     subjSelects.forEach(sel => {
-      const opt = document.createElement('option');
-      opt.value = s;
-      opt.innerText = s;
-      sel.appendChild(opt);
+      sel.innerHTML = '';
+      if (user.subjects && user.subjects.length > 0) {
+        user.subjects.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.innerText = s;
+          sel.appendChild(opt);
+        });
+      } else {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.innerText = 'No subjects added yet';
+        sel.appendChild(opt);
+      }
     });
-  });
+  }
+  loadSubjects();
 
   // Set Default Today Date
   document.getElementById('filterDate').value = new Date().toISOString().split('T')[0];
@@ -112,11 +134,41 @@
     window.location.href = '/login.html';
   }
 
+  async function addNewSubject() {
+    const newSubj = document.getElementById('newSubjInput').value.trim();
+    const msg = document.getElementById('subjMsg');
+
+    if (!newSubj) { alert("Please enter a subject name!"); return; }
+
+    try {
+      const res = await fetch('/api/teacher/add-subject', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ userId: user.userId, newSubject: newSubj })
+      });
+      const data = await res.json();
+
+      msg.style.color = data.success ? 'green' : 'red';
+      msg.innerText = data.message;
+
+      if (data.success) {
+        user.subjects = data.subjects;
+        localStorage.setItem('user', JSON.stringify(user));
+        loadSubjects();
+        document.getElementById('newSubjInput').value = '';
+      }
+    } catch(e) {
+      msg.style.color = 'red';
+      msg.innerText = "Error adding subject.";
+    }
+  }
+
   async function startSession() {
     const subject = document.getElementById('startSubject').value;
     const passcode = document.getElementById('startCode').value.trim();
     const msg = document.getElementById('startMsg');
 
+    if (!subject) { alert('Please add or select a subject first!'); return; }
     if (!passcode) { alert('Enter Passcode!'); return; }
 
     navigator.geolocation.getCurrentPosition(async (pos) => {
@@ -135,6 +187,13 @@
       const data = await res.json();
       msg.style.color = data.success ? 'green' : 'red';
       msg.innerText = data.message;
+
+      if (data.success) {
+        setTimeout(() => {
+          msg.style.color = 'red';
+          msg.innerText = '🔴 Live Session Ended (10 Mins Expired)';
+        }, 600000);
+      }
     }, (err) => alert("Location Error: " + err.message));
   }
 
@@ -143,6 +202,7 @@
     const studentId = document.getElementById('manualRoll').value.trim();
     const msg = document.getElementById('manualMsg');
 
+    if (!subject) { alert('Please select a subject!'); return; }
     if (!studentId) { alert('Enter Roll Number!'); return; }
 
     const res = await fetch('/api/attendance/manual', {
@@ -174,7 +234,6 @@
       return;
     }
 
-    // Group by Subject
     const groups = {};
     data.records.forEach(r => {
       if (!groups[r.subject]) groups[r.subject] = [];

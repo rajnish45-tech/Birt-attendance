@@ -356,6 +356,29 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
   }
 });
 
+// ADD NEW SUBJECT TO EXISTING TEACHER
+app.post('/api/teacher/add-subject', async (req, res) => {
+  try {
+    const { userId, newSubject } = req.body;
+    if (!userId || !newSubject) {
+      return res.status(400).json({ success: false, message: 'Subject name required!' });
+    }
+
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found!' });
+
+    const trimmedSubj = newSubject.trim();
+    if (!user.subjects.includes(trimmedSubj)) {
+      user.subjects.push(trimmedSubj);
+      await user.save();
+    }
+
+    res.json({ success: true, message: `Subject '${trimmedSubj}' added successfully!`, subjects: user.subjects });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // SEED HOD MASTER ACCOUNT
 async function seedMaster() {
   const hod = await User.findOne({ userId: 'hod_cs' });
