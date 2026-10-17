@@ -33,7 +33,7 @@ const UserSchema = new mongoose.Schema({
   subjects: [String]
 });
 
-// 2. Active Session Schema (Strict 20m & 10m TTL)
+// 2. Active Session Schema (Strict 30m Range & 10m TTL)
 const SessionSchema = new mongoose.Schema({
   branch: String,
   subject: String,
@@ -41,11 +41,11 @@ const SessionSchema = new mongoose.Schema({
   passcode: String,
   teacherLat: Number,
   teacherLng: Number,
-  radius: { type: Number, default: 20 },
+  radius: { type: Number, default: 30 },
   createdAt: { type: Date, default: Date.now, expires: 600 }
 });
 
-// 3. Attendance Record Schema
+// 3. Attendance Record Schema with Unique Compound Index
 const AttendanceSchema = new mongoose.Schema({
   studentId: { type: String, required: true },
   branch: { type: String, required: true },
@@ -56,6 +56,9 @@ const AttendanceSchema = new mongoose.Schema({
   mode: { type: String, default: 'Online (GPS)' },
   deviceId: { type: String }
 });
+
+// 🛑 MASTER FIX: Database Level Unique Compound Index (Prevent Any Duplicate Entry)
+AttendanceSchema.index({ studentId: 1, branch: 1, subject: 1, dateStr: 1 }, { unique: true });
 
 const User = mongoose.model('User', UserSchema);
 const Session = mongoose.model('Session', SessionSchema);
@@ -79,6 +82,11 @@ function getTodayDateString() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+// Helper Function: Normalize Roll Numbers (Removes extra spaces & forces UPPERCASE)
+function normalizeInput(str) {
+  return str ? str.trim().replace(/\s+/g, '').toUpperCase() : '';
 }
 
 // ================= API ROUTES ================= //
@@ -160,17 +168,17 @@ app.post('/api/session/start', async (req, res) => {
       passcode: passcode.trim(),
       teacherLat,
       teacherLng,
-      radius: 20
+      radius: 30
     });
     await session.save();
 
-    res.json({ success: true, message: `Session started for ${branch} - ${subject} (10 Mins Expiry, 20m Range)!` });
+    res.json({ success: true, message: `Session started for ${branch} - ${subject} (10 Mins Expiry, 30m Range)!` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 4. STUDENT MARK ATTENDANCE
+// 4. STUDENT MARK ATTENDANCE (BULLET-PROOF ANTI-DUPLICATE)
 app.post('/api/attendance/mark', async (req, res) => {
   try {
     const { branch, subject, studentId, enteredCode, userLat, userLng, deviceId } = req.body;
@@ -179,9 +187,12 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Roll Number and Passcode are required!' });
     }
 
+    const cleanStudentId = normalizeInput(studentId);
+    const cleanSubject = subject ? subject.trim() : '';
+
     const activeSession = await Session.findOne({
       branch: branch,
-      subject: new RegExp(`^${subject.trim()}$`, 'i'),
+      subject: new RegExp(`^${cleanSubject}$`, 'i'),
       passcode: enteredCode.trim()
     });
 
@@ -189,20 +200,23 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid Passcode or Session Expired (10 mins over)!' });
     }
 
-    // Geofence
+    // Geofence Range Check
+    if (userLat === undefined || userLng === undefined || userLat === null || userLng === null) {
+      return res.status(400).json({ success: false, message: 'GPS Location required! Please enable location.' });
+    }
+
     const distance = getDistanceInMeters(activeSession.teacherLat, activeSession.teacherLng, userLat, userLng);
     if (distance > activeSession.radius) {
-      return res.status(400).json({ success: false, message: `Out of Class Range! You are ${Math.round(distance)}m away (Max allowed: 20m)` });
+      return res.status(400).json({ success: false, message: `Out of Class Range! You are ${Math.round(distance)}m away (Max allowed: ${activeSession.radius}m)` });
     }
 
     const todayStr = getTodayDateString();
-    const formattedStudentId = studentId.trim().toUpperCase();
 
-    // Prevent Duplicates
+    // Prevent Duplicate Check
     const existingStudent = await Attendance.findOne({
-      studentId: formattedStudentId,
+      studentId: cleanStudentId,
       branch: branch,
-      subject: new RegExp(`^${subject.trim()}$`, 'i'),
+      subject: new RegExp(`^${cleanSubject}$`, 'i'),
       dateStr: todayStr
     });
 
@@ -210,12 +224,12 @@ app.post('/api/attendance/mark', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Attendance already marked for this Roll Number today!' });
     }
 
-    // Proxy Lock
+    // Proxy Device Lock
     if (deviceId && deviceId.trim() !== '') {
       const existingDevice = await Attendance.findOne({
         deviceId: deviceId.trim(),
         branch: branch,
-        subject: new RegExp(`^${subject.trim()}$`, 'i'),
+        subject: new RegExp(`^${cleanSubject}$`, 'i'),
         dateStr: todayStr
       });
 
@@ -224,16 +238,23 @@ app.post('/api/attendance/mark', async (req, res) => {
       }
     }
 
-    const newRecord = new Attendance({
-      studentId: formattedStudentId,
-      branch: branch,
-      subject: activeSession.subject,
-      teacherId: activeSession.teacherId,
-      dateStr: todayStr,
-      mode: 'Online (GPS)',
-      deviceId: deviceId ? deviceId.trim() : 'Unknown'
-    });
-    await newRecord.save();
+    try {
+      const newRecord = new Attendance({
+        studentId: cleanStudentId,
+        branch: branch,
+        subject: activeSession.subject,
+        teacherId: activeSession.teacherId,
+        dateStr: todayStr,
+        mode: 'Online (GPS)',
+        deviceId: deviceId ? deviceId.trim() : 'Unknown'
+      });
+      await newRecord.save();
+    } catch (dbErr) {
+      if (dbErr.code === 11000) {
+        return res.status(400).json({ success: false, message: 'Attendance already marked for this Roll Number today!' });
+      }
+      throw dbErr;
+    }
 
     res.json({ success: true, message: 'Attendance Marked Successfully!' });
   } catch (err) {
@@ -250,12 +271,13 @@ app.post('/api/attendance/manual', async (req, res) => {
     }
 
     const targetDate = dateStr || getTodayDateString();
-    const formattedStudentId = studentId.trim().toUpperCase();
+    const cleanStudentId = normalizeInput(studentId);
+    const cleanSubject = subject.trim();
 
     const existing = await Attendance.findOne({
-      studentId: formattedStudentId,
+      studentId: cleanStudentId,
       branch: branch,
-      subject: new RegExp(`^${subject.trim()}$`, 'i'),
+      subject: new RegExp(`^${cleanSubject}$`, 'i'),
       dateStr: targetDate
     });
 
@@ -263,24 +285,31 @@ app.post('/api/attendance/manual', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Student already marked Present for this date!' });
     }
 
-    const newRecord = new Attendance({
-      studentId: formattedStudentId,
-      branch: branch,
-      subject: subject.trim(),
-      teacherId,
-      dateStr: targetDate,
-      mode: 'Manual (Teacher)',
-      deviceId: 'Teacher_Override'
-    });
-    await newRecord.save();
+    try {
+      const newRecord = new Attendance({
+        studentId: cleanStudentId,
+        branch: branch,
+        subject: cleanSubject,
+        teacherId,
+        dateStr: targetDate,
+        mode: 'Manual (Teacher)',
+        deviceId: 'Teacher_Override'
+      });
+      await newRecord.save();
+    } catch (dbErr) {
+      if (dbErr.code === 11000) {
+        return res.status(400).json({ success: false, message: 'Student already marked Present for this date!' });
+      }
+      throw dbErr;
+    }
 
-    res.json({ success: true, message: `Student ${formattedStudentId} marked Present manually!` });
+    res.json({ success: true, message: `Student ${cleanStudentId} marked Present manually!` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 6. FETCH RECORDS (Strict Privacy for Teachers)
+// 6. FETCH RECORDS (Strict Privacy & Clean Unique Order)
 app.get('/api/attendance/query', async (req, res) => {
   try {
     const { branch, subject, teacherId, role, dateStr } = req.query;
@@ -301,9 +330,22 @@ app.get('/api/attendance/query', async (req, res) => {
     }
 
     let records = await Attendance.find(query);
-    records.sort((a, b) => a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' }));
 
-    res.json({ success: true, records });
+    // Front-end Unique Filter (Ensures duplicate never displays even if historical data exists)
+    const uniqueMap = new Map();
+    records.forEach(r => {
+      const normRoll = normalizeInput(r.studentId);
+      const key = `${r.branch}_${r.subject.toLowerCase()}_${r.dateStr}_${normRoll}`;
+      if (!uniqueMap.has(key)) {
+        r.studentId = normRoll;
+        uniqueMap.set(key, r);
+      }
+    });
+
+    let uniqueRecords = Array.from(uniqueMap.values());
+    uniqueRecords.sort((a, b) => a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' }));
+
+    res.json({ success: true, records: uniqueRecords });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -340,10 +382,22 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
     if (dateStr) query.dateStr = dateStr;
 
     let records = await Attendance.find(query);
-    records.sort((a, b) => a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' }));
+
+    const uniqueMap = new Map();
+    records.forEach(r => {
+      const normRoll = normalizeInput(r.studentId);
+      const key = `${r.branch}_${r.subject.toLowerCase()}_${r.dateStr}_${normRoll}`;
+      if (!uniqueMap.has(key)) {
+        r.studentId = normRoll;
+        uniqueMap.set(key, r);
+      }
+    });
+
+    let uniqueRecords = Array.from(uniqueMap.values());
+    uniqueRecords.sort((a, b) => a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' }));
 
     let csv = 'Roll Number,Branch,Subject,Date,Mode,Time\n';
-    records.forEach(r => {
+    uniqueRecords.forEach(r => {
       const timeStr = new Date(r.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
       csv += `"${r.studentId}","${r.branch}","${r.subject}","${r.dateStr}","${r.mode}","${timeStr}"\n`;
     });

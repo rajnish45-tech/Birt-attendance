@@ -3,104 +3,105 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Student Attendance - BIRT</title>
+  <title>Student Attendance - Smart Attendance System</title>
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #eef2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 15px; }
-    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
-    h2 { margin-bottom: 15px; color: #333; }
-    select, input { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; box-sizing: border-box; }
-    button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
-    #msg { margin-top: 15px; font-weight: bold; }
+    * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body { background: #f0f4f8; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); width: 100%; max-width: 420px; }
+    h2 { margin-top: 0; color: #333; text-align: center; }
+    label { font-weight: bold; font-size: 13px; margin-bottom: 5px; display: block; color: #444; }
+    input, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    button { background: #2e7d32; color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; }
+    button:hover { background: #1b5e20; }
+    #statusMsg { text-align: center; margin-top: 15px; font-weight: bold; font-size: 14px; }
+    .footer-link { text-align: center; margin-top: 15px; font-size: 13px; }
+    .footer-link a { color: #0288d1; text-decoration: none; }
   </style>
 </head>
 <body>
 
-  <div class="card">
-    <h2>👨‍🎓 Student Attendance</h2>
-    
-    <label style="text-align: left; display: block; margin-bottom: 5px;"><b>Select Branch:</b></label>
-    <select id="branchSelect">
-      <option value="Computer Science">Computer Science</option>
-      <option value="AIML">AIML</option>
-      <option value="EC">EC</option>
-      <option value="EX">EX</option>
-      <option value="Mechanical">Mechanical</option>
-      <option value="CIVIL">CIVIL</option>
-    </select>
+<div class="card">
+  <h2>🎓 Student Attendance</h2>
+  
+  <label>Branch:</label>
+  <select id="branchSelect">
+    <option value="Computer Science">Computer Science</option>
+    <option value="Information Technology">Information Technology</option>
+    <option value="Electronics">Electronics</option>
+    <option value="Mechanical">Mechanical</option>
+    <option value="Civil">Civil</option>
+  </select>
 
-    <input type="text" id="subjectInput" placeholder="Enter Subject Name (e.g. Java, DBMS)" />
-    <input type="text" id="studentId" placeholder="Enter Roll Number / Student ID" />
-    <input type="number" id="enteredCode" placeholder="Enter 4-Digit Teacher Passcode" maxlength="4" />
+  <label>Subject Name:</label>
+  <input type="text" id="subjectSelect" placeholder="e.g. Java, DBMS">
 
-    <button onclick="markAttendance()">Mark Attendance</button>
+  <label>Roll Number:</label>
+  <input type="text" id="studentId" placeholder="e.g. 0173CS251106">
 
-    <div id="msg"></div>
+  <label>4-Digit Passcode:</label>
+  <input type="number" id="passcode" placeholder="Enter teacher's session code">
+
+  <button onclick="markAttendance()">📍 Mark Attendance (GPS)</button>
+  
+  <p id="statusMsg"></p>
+
+  <div class="footer-link">
+    <a href="/login.html">🔒 Teacher / HOD Login Panel</a>
   </div>
+</div>
 
-  <script>
-    function getDeviceId() {
-      let deviceId = localStorage.getItem('birt_device_id');
+<script>
+  function markAttendance() {
+    const studentId = document.getElementById('studentId').value.trim();
+    const enteredCode = document.getElementById('passcode').value.trim();
+    const branch = document.getElementById('branchSelect').value;
+    const subject = document.getElementById('subjectSelect').value.trim();
+    const msg = document.getElementById('statusMsg');
+
+    if (!studentId || !enteredCode || !subject) {
+      alert("Kripya Roll Number, Subject aur Passcode sabhi fields bharein!");
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      alert("Aapka browser Geolocation support nahi karta!");
+      return;
+    }
+
+    msg.style.color = '#333';
+    msg.innerText = "Location fetch ho rahi hai, kripya wait karein...";
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const userLat = pos.coords.latitude;
+      const userLng = pos.coords.longitude;
+      
+      // Device ID generator for proxy prevention
+      let deviceId = localStorage.getItem('deviceId');
       if (!deviceId) {
-        deviceId = 'DEV_' + Math.random().toString(36).substring(2, 15) + Date.now();
-        localStorage.setItem('birt_device_id', deviceId);
-      }
-      return deviceId;
-    }
-
-    async function markAttendance() {
-      const branch = document.getElementById('branchSelect').value;
-      const subject = document.getElementById('subjectInput').value.trim();
-      const studentId = document.getElementById('studentId').value.trim();
-      const enteredCode = document.getElementById('enteredCode').value.trim();
-      const msg = document.getElementById('msg');
-
-      if (!subject || !studentId || !enteredCode) {
-        alert("Saari details (Subject, Roll Number, Passcode) bharna zaroori hai!");
-        return;
+        deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now();
+        localStorage.setItem('deviceId', deviceId);
       }
 
-      msg.style.color = "blue";
-      msg.innerText = "Verifying Location & Device Lock...";
-
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-          try {
-            const res = await fetch('/api/attendance/mark', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                branch,
-                subject,
-                studentId,
-                enteredCode,
-                userLat: pos.coords.latitude,
-                userLng: pos.coords.longitude,
-                deviceId: getDeviceId()
-              })
-            });
-
-            const data = await res.json();
-
-            if (data.success) {
-              msg.style.color = "green";
-              msg.innerText = "✅ " + data.message;
-            } else {
-              msg.style.color = "red";
-              msg.innerText = "❌ " + data.message;
-            }
-          } catch (err) {
-            msg.style.color = "red";
-            msg.innerText = "Error: " + err.message;
-          }
-        }, (err) => {
-          msg.style.color = "red";
-          msg.innerText = "❌ GPS Location Required: " + err.message;
-        }, { enableHighAccuracy: true });
-      } else {
-        alert("Geolocation is not supported on this browser.");
+      try {
+        const res = await fetch('/api/attendance/mark', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ branch, subject, studentId, enteredCode, userLat, userLng, deviceId })
+        });
+        const data = await res.json();
+        msg.style.color = data.success ? 'green' : 'red';
+        msg.innerText = data.message;
+      } catch (e) {
+        msg.style.color = 'red';
+        msg.innerText = "Server connection error!";
       }
-    }
-  </script>
+    }, (err) => {
+      alert("Location error: GPS on karein aur browser ko location permission dein! (" + err.message + ")");
+      msg.style.color = 'red';
+      msg.innerText = "GPS Location Failed.";
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+</script>
+
 </body>
 </html>
