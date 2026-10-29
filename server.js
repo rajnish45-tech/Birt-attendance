@@ -331,7 +331,7 @@ app.get('/api/attendance/query', async (req, res) => {
 
     let records = await Attendance.find(query);
 
-    // Front-end Unique Filter (Ensures duplicate never displays even if historical data exists)
+    // Front-end Unique Filter
     const uniqueMap = new Map();
     records.forEach(r => {
       const normRoll = normalizeInput(r.studentId);
@@ -410,7 +410,7 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
   }
 });
 
-// 9. STUDENT INDIVIDUAL ERP REPORT API
+// 9. STUDENT INDIVIDUAL ERP REPORT API (UPDATED HISTORICAL HELD LOGIC)
 app.get('/api/attendance/student-report/:studentId', async (req, res) => {
   try {
     const studentId = normalizeInput(req.params.studentId);
@@ -420,16 +420,43 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
 
     const studentRecords = await Attendance.find({ studentId: studentId });
 
-    const subjectStats = {};
-    studentRecords.forEach(rec => {
-      const sub = rec.subject;
-      if (!subjectStats[sub]) {
-        subjectStats[sub] = { totalHeld: 0, present: 0, absent: 0 };
-      }
+    if (studentRecords.length === 0) {
+      return res.json({
+        success: true,
+        studentId: studentId,
+        overallPercentage: "0.00",
+        grandTotalHeld: 0,
+        grandTotalPresent: 0,
+        grandTotalAbsent: 0,
+        subjectWise: {}
+      });
+    }
 
-      subjectStats[sub].present += 1;
-      subjectStats[sub].totalHeld += 1;
+    const studentBranch = studentRecords[0].branch;
+
+    // Student ki branch me jitni bhi dates par unique class sessions huye hain, unko group karke held dates nikalna
+    const allBranchRecords = await Attendance.find({ branch: studentBranch });
+
+    const classHeldMap = {};
+    allBranchRecords.forEach(rec => {
+      const sub = rec.subject;
+      if (!classHeldMap[sub]) {
+        classHeldMap[sub] = new Set();
+      }
+      classHeldMap[sub].add(rec.dateStr);
     });
+
+    const subjectStats = {};
+    for (let sub in classHeldMap) {
+      const totalHeld = classHeldMap[sub].size;
+      const presentCount = studentRecords.filter(r => r.subject.toLowerCase() === sub.toLowerCase()).length;
+      
+      subjectStats[sub] = {
+        totalHeld: totalHeld,
+        present: presentCount,
+        absent: Math.max(0, totalHeld - presentCount)
+      };
+    }
 
     let grandTotalHeld = 0;
     let grandTotalPresent = 0;
@@ -441,7 +468,7 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
 
     const overallPercentage = grandTotalHeld > 0 
       ? ((grandTotalPresent / grandTotalHeld) * 100).toFixed(2) 
-      : 0;
+      : "0.00";
 
     res.json({
       success: true,
@@ -449,7 +476,7 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
       overallPercentage: overallPercentage,
       grandTotalHeld: grandTotalHeld,
       grandTotalPresent: grandTotalPresent,
-      grandTotalAbsent: grandTotalHeld - grandTotalPresent,
+      grandTotalAbsent: Math.max(0, grandTotalHeld - grandTotalPresent),
       subjectWise: subjectStats
     });
   } catch (err) {
@@ -457,7 +484,7 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
   }
 });
 
-// 10. HOD CONSOLIDATED BATCH REPORT API
+// 10. HOD CONSOLIDATED BATCH REPORT API (UPDATED ACCURATE BATCH HELD LOGIC)
 app.get('/api/attendance/hod-report', async (req, res) => {
   try {
     const { branch, subject } = req.query;
@@ -467,20 +494,31 @@ app.get('/api/attendance/hod-report', async (req, res) => {
 
     const allRecords = await Attendance.find(query);
 
+    // Total Unique Sessions Held (Subject + Date)
+    const heldDatesSet = new Set();
+    allRecords.forEach(r => heldDatesSet.add(`${r.subject.toLowerCase()}_${r.dateStr}`));
+    const totalClassSessions = heldDatesSet.size;
+
     const studentMap = {};
     allRecords.forEach(rec => {
       const sId = normalizeInput(rec.studentId);
       if (!studentMap[sId]) {
-        studentMap[sId] = { studentId: sId, branch: rec.branch, totalHeld: 0, present: 0, absent: 0 };
+        studentMap[sId] = { studentId: sId, branch: rec.branch, present: 0 };
       }
-
       studentMap[sId].present += 1;
-      studentMap[sId].totalHeld += 1;
     });
 
     const reportArray = Object.values(studentMap).map(st => {
-      const pct = st.totalHeld > 0 ? ((st.present / st.totalHeld) * 100).toFixed(2) : 0;
-      return { ...st, percentage: pct };
+      const held = totalClassSessions > 0 ? totalClassSessions : st.present;
+      const pct = held > 0 ? ((st.present / held) * 100).toFixed(2) : 0;
+      return {
+        studentId: st.studentId,
+        branch: st.branch,
+        totalHeld: held,
+        present: st.present,
+        absent: Math.max(0, held - st.present),
+        percentage: pct
+      };
     });
 
     res.json({ success: true, studentsData: reportArray });

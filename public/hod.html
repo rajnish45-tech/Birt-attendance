@@ -16,10 +16,10 @@
     .btn-export:hover { background: #2b6cb0; }
     .btn-logout { background: #e53e3e; color: white; }
     .btn-logout:hover { background: #c53030; }
-    .tab-btn { background: #4a5568; color: white; margin-right: 10px; padding: 10px 20px; }
+    .tab-btn { background: #4a5568; color: white; margin-right: 10px; padding: 10px 20px; margin-bottom: 8px; }
     .tab-btn.active { background: #38a169; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #1a202c; font-size: 14px; }
-    th, td { border: 1px solid #4a5568; padding: 10px; text-align: left; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #1a202c; font-size: 14px; text-align: center; }
+    th, td { border: 1px solid #4a5568; padding: 10px; }
     th { background: #2b6cb0; color: white; }
     .badge-success { color: #48bb78; font-weight: bold; }
     .badge-danger { color: #f56565; font-weight: bold; }
@@ -37,6 +37,7 @@
   <div style="margin-bottom: 15px;">
     <button id="tabDailyBtn" class="tab-btn active" onclick="switchTab('daily')">📅 Daily Attendance Logs</button>
     <button id="tabErpBtn" class="tab-btn" onclick="switchTab('erp')">📊 Overall Batch ERP Percentage</button>
+    <button id="tabSearchBtn" class="tab-btn" onclick="switchTab('search')">🔍 Search Student by Roll No</button>
   </div>
 
   <!-- VIEW 1: DAILY ATTENDANCE LOGS -->
@@ -47,11 +48,12 @@
         <select id="filterBranch" onchange="fetchRecords()">
           <option value="ALL">All Branches</option>
           <option value="Computer Science">Computer Science</option>
+          <option value="Information Technology">Information Technology</option>
           <option value="AIML">AIML</option>
           <option value="EC">EC</option>
           <option value="EX">EX</option>
           <option value="Mechanical">Mechanical</option>
-          <option value="CIVIL">CIVIL</option>
+          <option value="Civil">Civil</option>
         </select>
       </div>
 
@@ -76,11 +78,12 @@
         <select id="erpFilterBranch" onchange="fetchConsolidatedERPReport()">
           <option value="ALL">All Branches</option>
           <option value="Computer Science">Computer Science</option>
+          <option value="Information Technology">Information Technology</option>
           <option value="AIML">AIML</option>
           <option value="EC">EC</option>
           <option value="EX">EX</option>
           <option value="Mechanical">Mechanical</option>
-          <option value="CIVIL">CIVIL</option>
+          <option value="Civil">Civil</option>
         </select>
       </div>
       <button class="btn-export" style="background:#38a169;" onclick="fetchConsolidatedERPReport()">🔄 Refresh ERP Report</button>
@@ -88,6 +91,22 @@
 
     <h3>📈 Consolidated Batch Student Attendance Status</h3>
     <div id="erpReportSection"></div>
+  </div>
+
+  <!-- VIEW 3: INDIVIDUAL STUDENT QUICK SEARCH BY ROLL NO -->
+  <div id="searchView" class="card" style="display: none;">
+    <h3>🔍 Quick Student Attendance Lookup</h3>
+    <p style="font-size: 13px; color: #cbd5e0;">Kisi bhi student ka Roll Number daal kar uski complete subject-wise aur overall attendance percentage dekhein:</p>
+    
+    <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap; margin-bottom: 20px;">
+      <div>
+        <label style="font-size:13px; font-weight:bold;">Student Roll Number:</label><br>
+        <input type="text" id="searchRollNo" placeholder="e.g. 0173CS241095" style="width: 250px;">
+      </div>
+      <button onclick="searchStudentByHOD()" style="background: #3182ce; color: white; margin-top: 18px;">🔍 Search Report</button>
+    </div>
+
+    <div id="studentSearchResult"></div>
   </div>
 
 </div>
@@ -104,18 +123,25 @@
   }
 
   function switchTab(tabName) {
+    document.getElementById('dailyView').style.display = 'none';
+    document.getElementById('erpView').style.display = 'none';
+    document.getElementById('searchView').style.display = 'none';
+
+    document.getElementById('tabDailyBtn').classList.remove('active');
+    document.getElementById('tabErpBtn').classList.remove('active');
+    document.getElementById('tabSearchBtn').classList.remove('active');
+
     if (tabName === 'daily') {
       document.getElementById('dailyView').style.display = 'block';
-      document.getElementById('erpView').style.display = 'none';
       document.getElementById('tabDailyBtn').classList.add('active');
-      document.getElementById('tabErpBtn').classList.remove('active');
       fetchRecords();
-    } else {
-      document.getElementById('dailyView').style.display = 'none';
+    } else if (tabName === 'erp') {
       document.getElementById('erpView').style.display = 'block';
-      document.getElementById('tabDailyBtn').classList.remove('active');
       document.getElementById('tabErpBtn').classList.add('active');
       fetchConsolidatedERPReport();
+    } else if (tabName === 'search') {
+      document.getElementById('searchView').style.display = 'block';
+      document.getElementById('tabSearchBtn').classList.add('active');
     }
   }
 
@@ -202,6 +228,74 @@
       erpDiv.innerHTML = html;
     } catch (e) {
       erpDiv.innerHTML = "<p style='color:red;'>Server connection error!</p>";
+    }
+  }
+
+  // 3. Search Individual Student Attendance Report By Roll No
+  async function searchStudentByHOD() {
+    const rollNo = document.getElementById('searchRollNo').value.trim().toUpperCase();
+    const resultDiv = document.getElementById('studentSearchResult');
+
+    if (!rollNo) {
+      alert("Kripya Roll Number enter karein!");
+      return;
+    }
+
+    resultDiv.innerHTML = "<p style='color:#63b3ed;'>Searching student records...</p>";
+
+    try {
+      const res = await fetch(`/api/attendance/student-report/${rollNo}`);
+      const data = await res.json();
+
+      if (!data.success || Object.keys(data.subjectWise).length === 0) {
+        resultDiv.innerHTML = `<p style='color:#f56565;'>❌ Roll Number (${rollNo}) ka koi record nahi mila!</p>`;
+        return;
+      }
+
+      let html = `
+        <div style="background: #1a202c; padding: 15px; border-radius: 8px; border: 1px solid #4a5568; margin-top: 15px; text-align: left;">
+          <h4 style="color: #48bb78; margin-top:0;">📋 Student Attendance Summary: ${data.studentId}</h4>
+          <p style="font-size: 14px; margin-bottom: 15px;">
+            <b>Total Held:</b> ${data.grandTotalHeld} | 
+            <b>Present:</b> ${data.grandTotalPresent} | 
+            <b>Absent:</b> ${data.grandTotalAbsent}<br>
+            <span style="font-size: 16px; color: #3182ce;"><b>Overall Attendance: ${data.overallPercentage}%</b></span>
+          </p>
+          
+          <table style="width: 100%; text-align: center;">
+            <thead>
+              <tr>
+                <th style="text-align: left;">Subject</th>
+                <th>Total Held</th>
+                <th>Present</th>
+                <th>Absent</th>
+                <th>Percentage (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      for (let sub in data.subjectWise) {
+        let item = data.subjectWise[sub];
+        let pct = item.totalHeld > 0 ? ((item.present / item.totalHeld) * 100).toFixed(2) : 0;
+        let pctColor = parseFloat(pct) >= 75 ? '#48bb78' : '#f56565';
+
+        html += `
+          <tr>
+            <td style="text-align: left;"><b>${sub}</b></td>
+            <td>${item.totalHeld}</td>
+            <td style="color: #48bb78; font-weight: bold;">${item.present}</td>
+            <td style="color: #f56565; font-weight: bold;">${item.absent}</td>
+            <td style="color: ${pctColor}; font-weight: bold;">${pct}%</td>
+          </tr>
+        `;
+      }
+
+      html += `</tbody></table></div>`;
+      resultDiv.innerHTML = html;
+
+    } catch (e) {
+      resultDiv.innerHTML = `<p style='color:#f56565;'>Server connection error!</p>`;
     }
   }
 
