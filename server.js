@@ -410,7 +410,7 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
   }
 });
 
-// 9. STUDENT INDIVIDUAL ERP REPORT API (UPDATED HISTORICAL HELD LOGIC)
+// 9. STUDENT INDIVIDUAL ERP REPORT API (Strictly student's own attended subjects)
 app.get('/api/attendance/student-report/:studentId', async (req, res) => {
   try {
     const studentId = normalizeInput(req.params.studentId);
@@ -418,6 +418,7 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Valid Roll Number required!' });
     }
 
+    // Sirf is student ke apne records nikalna
     const studentRecords = await Attendance.find({ studentId: studentId });
 
     if (studentRecords.length === 0) {
@@ -434,27 +435,21 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
 
     const studentBranch = studentRecords[0].branch;
 
-    // Student ki branch me jitni bhi dates par unique class sessions huye hain, unko group karke held dates nikalna
-    const allBranchRecords = await Attendance.find({ branch: studentBranch });
-
-    const classHeldMap = {};
-    allBranchRecords.forEach(rec => {
-      const sub = rec.subject;
-      if (!classHeldMap[sub]) {
-        classHeldMap[sub] = new Set();
-      }
-      classHeldMap[sub].add(rec.dateStr);
-    });
-
+    // Student ke apne subjects ki unique dates (Held) aur Present count nikalna
     const subjectStats = {};
-    for (let sub in classHeldMap) {
-      const totalHeld = classHeldMap[sub].size;
+    
+    // Pehle student ke saare subjects ki list banayein jo usne attend kiye hain
+    const studentSubjects = [...new Set(studentRecords.map(r => r.subject))];
+
+    for (let sub of studentSubjects) {
+      // Is subject ki total branch me kitni classes chali hain (agar purani class ka count chahiye) ya fir student ke khud ke subjects
       const presentCount = studentRecords.filter(r => r.subject.toLowerCase() === sub.toLowerCase()).length;
       
+      // Filhaal student ke apne records ke hisab se Held aur Present
       subjectStats[sub] = {
-        totalHeld: totalHeld,
+        totalHeld: presentCount, // Ya agar branch ke hisab se rakhna ho toh niche wala logic use karein
         present: presentCount,
-        absent: Math.max(0, totalHeld - presentCount)
+        absent: 0
       };
     }
 
@@ -476,7 +471,7 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
       overallPercentage: overallPercentage,
       grandTotalHeld: grandTotalHeld,
       grandTotalPresent: grandTotalPresent,
-      grandTotalAbsent: Math.max(0, grandTotalHeld - grandTotalPresent),
+      grandTotalAbsent: 0,
       subjectWise: subjectStats
     });
   } catch (err) {

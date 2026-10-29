@@ -18,8 +18,11 @@
     .report-btn { background: #0288d1; }
     .report-btn:hover { background: #01579b; }
     #statusMsg { text-align: center; margin-top: 15px; font-weight: bold; font-size: 14px; }
-    .footer-link { text-align: center; margin-top: 15px; font-size: 13px; }
-    .footer-link a { color: #0288d1; text-decoration: none; }
+    
+    /* Login Link placed nicely near top */
+    .top-login-link { text-align: right; margin-bottom: 15px; font-size: 13px; }
+    .top-login-link a { color: #d97706; text-decoration: none; font-weight: bold; }
+    .top-login-link a:hover { text-decoration: underline; }
     
     /* ERP Report Table Styles */
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; text-align: center; }
@@ -31,6 +34,11 @@
 
 <div class="card">
   <h2>🎓 Student Attendance</h2>
+
+  <!-- Teacher / HOD Login Link shifted to top for easy access -->
+  <div class="top-login-link">
+    <a href="/login.html">🔒 Teacher / HOD Login</a>
+  </div>
   
   <label>Branch:</label>
   <select id="branchSelect">
@@ -75,20 +83,15 @@
       <tbody id="studentReportBody"></tbody>
     </table>
   </div>
-
-  <div class="footer-link">
-    <a href="/login.html">🔒 Teacher / HOD Login Panel</a>
-  </div>
 </div>
 
 <script>
-  // Page load hote hi agar roll number saved hai toh auto-fill karke readonly lock kar do
   window.onload = function() {
     const savedRoll = localStorage.getItem('studentRoll');
     const rollInput = document.getElementById('studentId');
     if (savedRoll) {
       rollInput.value = savedRoll;
-      rollInput.readOnly = true; // Security: Koi doosra student roll number change nahi kar sakega!
+      rollInput.readOnly = true; 
     }
   };
 
@@ -104,7 +107,6 @@
       return;
     }
 
-    // Roll number ko securely save karke lock kar do
     localStorage.setItem('studentRoll', studentId);
     document.getElementById('studentId').readOnly = true;
 
@@ -120,7 +122,6 @@
       const userLat = pos.coords.latitude;
       const userLng = pos.coords.longitude;
       
-      // Device ID generator for proxy prevention
       let deviceId = localStorage.getItem('deviceId');
       if (!deviceId) {
         deviceId = 'dev_' + Math.random().toString(36).substring(2) + Date.now();
@@ -147,7 +148,6 @@
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   }
 
-  // Student Individual ERP Report Loader Function
   async function loadMyReport() {
     let studentId = document.getElementById('studentId').value.trim();
     const msg = document.getElementById('statusMsg');
