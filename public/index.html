@@ -12,11 +12,19 @@
     h2 { margin-top: 0; color: #333; text-align: center; }
     label { font-weight: bold; font-size: 13px; margin-bottom: 5px; display: block; color: #444; }
     input, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-    button { background: #2e7d32; color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; }
+    input[readonly] { background-color: #e9ecef; color: #495057; font-weight: bold; cursor: not-allowed; }
+    button { background: #2e7d32; color: white; border: none; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; margin-bottom: 8px; }
     button:hover { background: #1b5e20; }
+    .report-btn { background: #0288d1; }
+    .report-btn:hover { background: #01579b; }
     #statusMsg { text-align: center; margin-top: 15px; font-weight: bold; font-size: 14px; }
     .footer-link { text-align: center; margin-top: 15px; font-size: 13px; }
     .footer-link a { color: #0288d1; text-decoration: none; }
+    
+    /* ERP Report Table Styles */
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; text-align: center; }
+    th, td { border: 1px solid #ddd; padding: 6px; }
+    th { background-color: #0288d1; color: white; }
   </style>
 </head>
 <body>
@@ -36,15 +44,37 @@
   <label>Subject Name:</label>
   <input type="text" id="subjectSelect" placeholder="e.g. Java, DBMS">
 
-  <label>Roll Number:</label>
+  <label>Roll Number (Locked after first entry):</label>
   <input type="text" id="studentId" placeholder="e.g. 0173CS251106">
 
   <label>4-Digit Passcode:</label>
   <input type="number" id="passcode" placeholder="Enter teacher's session code">
 
   <button onclick="markAttendance()">📍 Mark Attendance (GPS)</button>
+  <button class="report-btn" onclick="loadMyReport()">📊 View My ERP Attendance Report</button>
   
   <p id="statusMsg"></p>
+
+  <!-- ERP Report Section -->
+  <div id="erpReportSection" style="margin-top: 15px; display: none;">
+    <hr>
+    <h4 style="margin: 5px 0; color: #1b5e20; text-align:center;">Overall Attendance Status</h4>
+    <div id="overallStats" style="font-size: 13px; text-align:center; font-weight:bold;"></div>
+    
+    <h4 style="margin: 10px 0 5px 0; font-size:13px; text-align:left;">Subject-wise Records</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Subject</th>
+          <th>Held</th>
+          <th>Present</th>
+          <th>Absent</th>
+          <th>%</th>
+        </tr>
+      </thead>
+      <tbody id="studentReportBody"></tbody>
+    </table>
+  </div>
 
   <div class="footer-link">
     <a href="/login.html">🔒 Teacher / HOD Login Panel</a>
@@ -52,8 +82,18 @@
 </div>
 
 <script>
-  function markAttendance() {
-    const studentId = document.getElementById('studentId').value.trim();
+  // Page load hote hi agar roll number saved hai toh auto-fill karke readonly lock kar do
+  window.onload = function() {
+    const savedRoll = localStorage.getItem('studentRoll');
+    const rollInput = document.getElementById('studentId');
+    if (savedRoll) {
+      rollInput.value = savedRoll;
+      rollInput.readOnly = true; // Security: Koi doosra student roll number change nahi kar sakega!
+    }
+  };
+
+  async function markAttendance() {
+    let studentId = document.getElementById('studentId').value.trim();
     const enteredCode = document.getElementById('passcode').value.trim();
     const branch = document.getElementById('branchSelect').value;
     const subject = document.getElementById('subjectSelect').value.trim();
@@ -63,6 +103,10 @@
       alert("Kripya Roll Number, Subject aur Passcode sabhi fields bharein!");
       return;
     }
+
+    // Roll number ko securely save karke lock kar do
+    localStorage.setItem('studentRoll', studentId);
+    document.getElementById('studentId').readOnly = true;
 
     if (!navigator.geolocation) {
       alert("Aapka browser Geolocation support nahi karta!");
@@ -101,6 +145,62 @@
       msg.style.color = 'red';
       msg.innerText = "GPS Location Failed.";
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+
+  // Student Individual ERP Report Loader Function
+  async function loadMyReport() {
+    let studentId = document.getElementById('studentId').value.trim();
+    const msg = document.getElementById('statusMsg');
+
+    if (!studentId) {
+      alert("Pehle Roll Number enter karein!");
+      return;
+    }
+
+    localStorage.setItem('studentRoll', studentId);
+    document.getElementById('studentId').readOnly = true;
+
+    msg.style.color = '#0288d1';
+    msg.innerText = "Loading your ERP attendance report...";
+
+    try {
+      const res = await fetch(`/api/attendance/student-report/${studentId}`);
+      const data = await res.json();
+
+      if (!data.success) {
+        msg.style.color = 'red';
+        msg.innerText = "Report load karne mein error aayi.";
+        return;
+      }
+
+      document.getElementById('overallStats').innerHTML = `
+        Total Classes Held: ${data.grandTotalHeld} | Present: ${data.grandTotalPresent} | Absent: ${data.grandTotalAbsent}<br>
+        <span style="color:#2e7d32; font-size:15px;">Overall Percentage: ${data.overallPercentage}%</span>
+      `;
+
+      let rows = '';
+      for (let sub in data.subjectWise) {
+        let item = data.subjectWise[sub];
+        let pct = item.totalHeld > 0 ? ((item.present / item.totalHeld) * 100).toFixed(2) : 0;
+        rows += `
+          <tr>
+            <td style="text-align:left;"><b>${sub}</b></td>
+            <td>${item.totalHeld}</td>
+            <td style="color:green; font-weight:bold;">${item.present}</td>
+            <td style="color:red; font-weight:bold;">${item.absent}</td>
+            <td><b>${pct}%</b></td>
+          </tr>
+        `;
+      }
+
+      document.getElementById('studentReportBody').innerHTML = rows;
+      document.getElementById('erpReportSection').style.display = 'block';
+      msg.style.color = 'green';
+      msg.innerText = "📊 ERP Report Loaded Successfully!";
+    } catch (e) {
+      msg.style.color = 'red';
+      msg.innerText = "Server connection error while loading report!";
+    }
   }
 </script>
 

@@ -410,6 +410,85 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
   }
 });
 
+// 9. STUDENT INDIVIDUAL ERP REPORT API
+app.get('/api/attendance/student-report/:studentId', async (req, res) => {
+  try {
+    const studentId = normalizeInput(req.params.studentId);
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'Valid Roll Number required!' });
+    }
+
+    const studentRecords = await Attendance.find({ studentId: studentId });
+
+    const subjectStats = {};
+    studentRecords.forEach(rec => {
+      const sub = rec.subject;
+      if (!subjectStats[sub]) {
+        subjectStats[sub] = { totalHeld: 0, present: 0, absent: 0 };
+      }
+
+      subjectStats[sub].present += 1;
+      subjectStats[sub].totalHeld += 1;
+    });
+
+    let grandTotalHeld = 0;
+    let grandTotalPresent = 0;
+
+    Object.keys(subjectStats).forEach(sub => {
+      grandTotalHeld += subjectStats[sub].totalHeld;
+      grandTotalPresent += subjectStats[sub].present;
+    });
+
+    const overallPercentage = grandTotalHeld > 0 
+      ? ((grandTotalPresent / grandTotalHeld) * 100).toFixed(2) 
+      : 0;
+
+    res.json({
+      success: true,
+      studentId: studentId,
+      overallPercentage: overallPercentage,
+      grandTotalHeld: grandTotalHeld,
+      grandTotalPresent: grandTotalPresent,
+      grandTotalAbsent: grandTotalHeld - grandTotalPresent,
+      subjectWise: subjectStats
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10. HOD CONSOLIDATED BATCH REPORT API
+app.get('/api/attendance/hod-report', async (req, res) => {
+  try {
+    const { branch, subject } = req.query;
+    let query = {};
+    if (branch && branch !== 'ALL') query.branch = branch;
+    if (subject && subject.trim() !== '') query.subject = new RegExp(`^${subject.trim()}$`, 'i');
+
+    const allRecords = await Attendance.find(query);
+
+    const studentMap = {};
+    allRecords.forEach(rec => {
+      const sId = normalizeInput(rec.studentId);
+      if (!studentMap[sId]) {
+        studentMap[sId] = { studentId: sId, branch: rec.branch, totalHeld: 0, present: 0, absent: 0 };
+      }
+
+      studentMap[sId].present += 1;
+      studentMap[sId].totalHeld += 1;
+    });
+
+    const reportArray = Object.values(studentMap).map(st => {
+      const pct = st.totalHeld > 0 ? ((st.present / st.totalHeld) * 100).toFixed(2) : 0;
+      return { ...st, percentage: pct };
+    });
+
+    res.json({ success: true, studentsData: reportArray });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ADD NEW SUBJECT TO EXISTING TEACHER
 app.post('/api/teacher/add-subject', async (req, res) => {
   try {

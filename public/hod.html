@@ -3,20 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HOD Master Portal</title>
+  <title>HOD Master Portal - Smart Attendance System</title>
   <style>
     * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
     body { background: #1a202c; color: #edf2f7; margin: 0; padding: 20px; }
     .container { max-width: 1100px; margin: auto; }
     .header { display: flex; justify-content: space-between; align-items: center; background: #2d3748; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; }
     .card { background: #2d3748; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-    input, select { padding: 10px; border-radius: 5px; border: 1px solid #4a5568; background: #1a202c; color: white; }
-    button { padding: 10px 15px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+    input, select { padding: 10px; border-radius: 5px; border: 1px solid #4a5568; background: #1a202c; color: white; font-size: 14px; }
+    button { padding: 10px 15px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 14px; }
     .btn-export { background: #3182ce; color: white; }
+    .btn-export:hover { background: #2b6cb0; }
     .btn-logout { background: #e53e3e; color: white; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #1a202c; }
+    .btn-logout:hover { background: #c53030; }
+    .tab-btn { background: #4a5568; color: white; margin-right: 10px; padding: 10px 20px; }
+    .tab-btn.active { background: #38a169; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: #1a202c; font-size: 14px; }
     th, td { border: 1px solid #4a5568; padding: 10px; text-align: left; }
-    th { background: #2b6cb0; }
+    th { background: #2b6cb0; color: white; }
+    .badge-success { color: #48bb78; font-weight: bold; }
+    .badge-danger { color: #f56565; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -27,7 +33,14 @@
     <button class="btn-logout" onclick="logout()">Logout</button>
   </div>
 
-  <div class="card">
+  <!-- Navigation Tabs -->
+  <div style="margin-bottom: 15px;">
+    <button id="tabDailyBtn" class="tab-btn active" onclick="switchTab('daily')">📅 Daily Attendance Logs</button>
+    <button id="tabErpBtn" class="tab-btn" onclick="switchTab('erp')">📊 Overall Batch ERP Percentage</button>
+  </div>
+
+  <!-- VIEW 1: DAILY ATTENDANCE LOGS -->
+  <div id="dailyView" class="card">
     <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
       <div>
         <label>Filter Branch:</label>
@@ -54,6 +67,29 @@
 
     <div id="hodRecords"></div>
   </div>
+
+  <!-- VIEW 2: CONSOLIDATED BATCH ERP PERCENTAGE REPORT -->
+  <div id="erpView" class="card" style="display: none;">
+    <div style="display:flex; gap:15px; align-items:center; flex-wrap:wrap; margin-bottom: 15px;">
+      <div>
+        <label>Filter Branch:</label>
+        <select id="erpFilterBranch" onchange="fetchConsolidatedERPReport()">
+          <option value="ALL">All Branches</option>
+          <option value="Computer Science">Computer Science</option>
+          <option value="AIML">AIML</option>
+          <option value="EC">EC</option>
+          <option value="EX">EX</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="CIVIL">CIVIL</option>
+        </select>
+      </div>
+      <button class="btn-export" style="background:#38a169;" onclick="fetchConsolidatedERPReport()">🔄 Refresh ERP Report</button>
+    </div>
+
+    <h3>📈 Consolidated Batch Student Attendance Status</h3>
+    <div id="erpReportSection"></div>
+  </div>
+
 </div>
 
 <script>
@@ -67,26 +103,106 @@
     window.location.href = '/login.html';
   }
 
+  function switchTab(tabName) {
+    if (tabName === 'daily') {
+      document.getElementById('dailyView').style.display = 'block';
+      document.getElementById('erpView').style.display = 'none';
+      document.getElementById('tabDailyBtn').classList.add('active');
+      document.getElementById('tabErpBtn').classList.remove('active');
+      fetchRecords();
+    } else {
+      document.getElementById('dailyView').style.display = 'none';
+      document.getElementById('erpView').style.display = 'block';
+      document.getElementById('tabDailyBtn').classList.remove('active');
+      document.getElementById('tabErpBtn').classList.add('active');
+      fetchConsolidatedERPReport();
+    }
+  }
+
+  // 1. Fetch Daily Attendance Records
   async function fetchRecords() {
     const branch = document.getElementById('filterBranch').value;
     const dateStr = document.getElementById('filterDate').value;
 
-    const res = await fetch(`/api/attendance/query?role=HOD&branch=${branch}&dateStr=${dateStr}`);
-    const data = await res.json();
+    try {
+      const res = await fetch(`/api/attendance/query?role=HOD&branch=${branch}&dateStr=${dateStr}`);
+      const data = await res.json();
 
-    document.getElementById('totalCount').innerText = data.records ? data.records.length : 0;
+      document.getElementById('totalCount').innerText = data.records ? data.records.length : 0;
 
-    let html = `<table><thead><tr><th>#</th><th>Roll No</th><th>Branch</th><th>Subject</th><th>Mode</th><th>Time</th></tr></thead><tbody>`;
-    if (data.records && data.records.length > 0) {
-      data.records.forEach((r, idx) => {
-        const time = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        html += `<tr><td>${idx+1}</td><td><b>${r.studentId}</b></td><td>${r.branch}</td><td>${r.subject}</td><td>${r.mode}</td><td>${time}</td></tr>`;
-      });
-    } else {
-      html += `<tr><td colspan="6" style="text-align:center;">No records found.</td></tr>`;
+      let html = `<table><thead><tr><th>#</th><th>Roll No</th><th>Branch</th><th>Subject</th><th>Mode</th><th>Time</th></tr></thead><tbody>`;
+      if (data.records && data.records.length > 0) {
+        data.records.forEach((r, idx) => {
+          const time = new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          html += `<tr><td>${idx+1}</td><td><b>${r.studentId}</b></td><td>${r.branch}</td><td>${r.subject}</td><td>${r.mode}</td><td>${time}</td></tr>`;
+        });
+      } else {
+        html += `<tr><td colspan="6" style="text-align:center;">No records found.</td></tr>`;
+      }
+      html += `</tbody></table>`;
+      document.getElementById('hodRecords').innerHTML = html;
+    } catch (e) {
+      document.getElementById('hodRecords').innerHTML = `<p style="color:red;">Error fetching daily records!</p>`;
     }
-    html += `</tbody></table>`;
-    document.getElementById('hodRecords').innerHTML = html;
+  }
+
+  // 2. Fetch Consolidated Batch ERP Attendance Report
+  async function fetchConsolidatedERPReport() {
+    const branch = document.getElementById('erpFilterBranch').value;
+    const erpDiv = document.getElementById('erpReportSection');
+
+    erpDiv.innerHTML = "<p>Loading batch report...</p>";
+
+    try {
+      const res = await fetch(`/api/attendance/hod-report?branch=${branch}`);
+      const data = await res.json();
+
+      if (!data.success || !data.studentsData) {
+        erpDiv.innerHTML = "<p style='color:red;'>Failed to load ERP report.</p>";
+        return;
+      }
+
+      let html = `<table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Roll Number</th>
+            <th>Branch</th>
+            <th>Total Held</th>
+            <th>Present</th>
+            <th>Absent</th>
+            <th>Overall Percentage</th>
+            <th>Status (75% Criteria)</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+      if (data.studentsData.length > 0) {
+        data.studentsData.forEach((st, idx) => {
+          const isEligible = parseFloat(st.percentage) >= 75;
+          const statusClass = isEligible ? 'badge-success' : 'badge-danger';
+          const statusText = isEligible ? 'Eligible (≥75%)' : 'Shortage (<75%)';
+
+          html += `<tr>
+            <td>${idx + 1}</td>
+            <td><b>${st.studentId}</b></td>
+            <td>${st.branch}</td>
+            <td>${st.totalHeld}</td>
+            <td style="color:#48bb78; font-weight:bold;">${st.present}</td>
+            <td style="color:#f56565; font-weight:bold;">${st.absent}</td>
+            <td style="font-size:15px;"><b>${st.percentage}%</b></td>
+            <td class="${statusClass}">${statusText}</td>
+          </tr>`;
+        });
+      } else {
+        html += `<tr><td colspan="8" style="text-align:center;">No student attendance data available.</td></tr>`;
+      }
+
+      html += `</tbody></table>`;
+      erpDiv.innerHTML = html;
+    } catch (e) {
+      erpDiv.innerHTML = "<p style='color:red;'>Server connection error!</p>";
+    }
   }
 
   function exportHOD() {
@@ -95,6 +211,7 @@
     window.location.href = `/api/attendance/export-sheet?role=HOD&branch=${branch}&dateStr=${dateStr}`;
   }
 
+  // Initial Load
   fetchRecords();
 </script>
 
