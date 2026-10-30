@@ -33,32 +33,34 @@ const UserSchema = new mongoose.Schema({
   subjects: [String]
 });
 
-// 2. Active Session Schema (Strict 30m Range & 10m TTL)
+// 2. Active Session Schema (With Lecture Number & 10m TTL)
 const SessionSchema = new mongoose.Schema({
   branch: String,
   subject: String,
   teacherId: String,
   passcode: String,
+  lectureNo: { type: Number, default: 1 },
   teacherLat: Number,
   teacherLng: Number,
   radius: { type: Number, default: 30 },
   createdAt: { type: Date, default: Date.now, expires: 600 }
 });
 
-// 3. Attendance Record Schema with Unique Compound Index
+// 3. Attendance Record Schema with Lecture Support & Device Fingerprint
 const AttendanceSchema = new mongoose.Schema({
   studentId: { type: String, required: true },
   branch: { type: String, required: true },
   subject: { type: String, required: true },
   teacherId: { type: String },
   dateStr: { type: String, required: true },
+  lectureNo: { type: Number, default: 1 },
   timestamp: { type: Date, default: Date.now },
   mode: { type: String, default: 'Online (GPS)' },
   deviceId: { type: String }
 });
 
-// 🛑 MASTER FIX: Database Level Unique Compound Index (Prevent Any Duplicate Entry)
-AttendanceSchema.index({ studentId: 1, branch: 1, subject: 1, dateStr: 1 }, { unique: true });
+// 🛑 MASTER FIX: Database Level Unique Index including lectureNo
+AttendanceSchema.index({ studentId: 1, branch: 1, subject: 1, dateStr: 1, lectureNo: 1 }, { unique: true });
 
 const User = mongoose.model('User', UserSchema);
 const Session = mongoose.model('Session', SessionSchema);
@@ -84,7 +86,7 @@ function getTodayDateString() {
   return `${year}-${month}-${day}`;
 }
 
-// Helper Function: Normalize Roll Numbers (Removes extra spaces & forces UPPERCASE)
+// Helper Function: Normalize Roll Numbers
 function normalizeInput(str) {
   return str ? str.trim().replace(/\s+/g, '').toUpperCase() : '';
 }
@@ -151,34 +153,45 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// 3. START SESSION
+// 3. START SESSION (Supports Multiple Lectures per Day)
 app.post('/api/session/start', async (req, res) => {
   try {
-    const { branch, subject, passcode, teacherLat, teacherLng, teacherId } = req.body;
+    const { branch, subject, passcode, teacherLat, teacherLng, teacherId, lectureNo } = req.body;
     if (!branch || !subject || !passcode) {
       return res.status(400).json({ success: false, message: 'Branch, Subject & Passcode required!' });
     }
 
-    await Session.deleteMany({ branch, subject: new RegExp(`^${subject.trim()}$`, 'i') });
+    const selectedLec = lectureNo ? parseInt(lectureNo) : 1;
+
+    // Remove existing session for same branch, subject & lectureNo
+    await Session.deleteMany({
+      branch,
+      subject: new RegExp(`^${subject.trim()}$`, 'i'),
+      lectureNo: selectedLec
+    });
 
     const session = new Session({
       branch,
       subject: subject.trim(),
       teacherId,
       passcode: passcode.trim(),
+      lectureNo: selectedLec,
       teacherLat,
       teacherLng,
       radius: 30
     });
     await session.save();
 
-    res.json({ success: true, message: `Session started for ${branch} - ${subject} (10 Mins Expiry, 30m Range)!` });
+    res.json({
+      success: true,
+      message: `Session started for ${branch} - ${subject} [Lecture ${selectedLec}] (10 Mins Expiry, 30m Range)!`
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 4. STUDENT MARK ATTENDANCE (BULLET-PROOF ANTI-DUPLICATE)
+// 4. STUDENT MARK ATTENDANCE (BULLET-PROOF ANTI-PROXY & STRICT 12-DIGIT ROLL VALIDATION)
 app.post('/api/attendance/mark', async (req, res) => {
   try {
     const { branch, subject, studentId, enteredCode, userLat, userLng, deviceId } = req.body;
@@ -188,6 +201,12 @@ app.post('/api/attendance/mark', async (req, res) => {
     }
 
     const cleanStudentId = normalizeInput(studentId);
+
+    // Strict 12-Digit Roll Length Check
+    if (cleanStudentId.length < 12) {
+      return res.status(400).json({ success: false, message: 'Invalid Roll Number! Roll Number must be at least 12 characters long.' });
+    }
+
     const cleanSubject = subject ? subject.trim() : '';
 
     const activeSession = await Session.findOne({
@@ -211,30 +230,33 @@ app.post('/api/attendance/mark', async (req, res) => {
     }
 
     const todayStr = getTodayDateString();
+    const currentLecture = activeSession.lectureNo || 1;
 
-    // Prevent Duplicate Check
+    // Check 1: Student already marked for this date + lecture?
     const existingStudent = await Attendance.findOne({
       studentId: cleanStudentId,
       branch: branch,
       subject: new RegExp(`^${cleanSubject}$`, 'i'),
-      dateStr: todayStr
+      dateStr: todayStr,
+      lectureNo: currentLecture
     });
 
     if (existingStudent) {
-      return res.status(400).json({ success: false, message: 'Attendance already marked for this Roll Number today!' });
+      return res.status(400).json({ success: false, message: `Attendance already marked for Roll No ${cleanStudentId} in Lecture ${currentLecture} today!` });
     }
 
-    // Proxy Device Lock
+    // Check 2: Proxy Lock (Device Fingerprint)
     if (deviceId && deviceId.trim() !== '') {
       const existingDevice = await Attendance.findOne({
         deviceId: deviceId.trim(),
         branch: branch,
         subject: new RegExp(`^${cleanSubject}$`, 'i'),
-        dateStr: todayStr
+        dateStr: todayStr,
+        lectureNo: currentLecture
       });
 
       if (existingDevice) {
-        return res.status(400).json({ success: false, message: 'Proxy Detected! This device has already marked attendance today.' });
+        return res.status(400).json({ success: false, message: `Proxy Blocked! This device has already marked attendance for Lecture ${currentLecture} today.` });
       }
     }
 
@@ -245,44 +267,116 @@ app.post('/api/attendance/mark', async (req, res) => {
         subject: activeSession.subject,
         teacherId: activeSession.teacherId,
         dateStr: todayStr,
+        lectureNo: currentLecture,
         mode: 'Online (GPS)',
         deviceId: deviceId ? deviceId.trim() : 'Unknown'
       });
       await newRecord.save();
     } catch (dbErr) {
       if (dbErr.code === 11000) {
-        return res.status(400).json({ success: false, message: 'Attendance already marked for this Roll Number today!' });
+        return res.status(400).json({ success: false, message: `Attendance already marked for Lecture ${currentLecture} today!` });
       }
       throw dbErr;
     }
 
-    res.json({ success: true, message: 'Attendance Marked Successfully!' });
+    res.json({ success: true, message: `Attendance Marked Successfully for Lecture ${currentLecture}!` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 5. MANUAL OVERRIDE
+// 5. COPY ATTENDANCE API (Copy records from Lecture X to Lecture Y in 1-Click)
+app.post('/api/attendance/copy-lecture', async (req, res) => {
+  try {
+    const { branch, subject, sourceLecture, targetLecture, teacherId, dateStr } = req.body;
+    if (!branch || !subject || !sourceLecture || !targetLecture) {
+      return res.status(400).json({ success: false, message: 'Branch, Subject, Source & Target Lectures required!' });
+    }
+
+    const targetDate = dateStr || getTodayDateString();
+    const cleanSubject = subject.trim();
+    const srcLec = parseInt(sourceLecture);
+    const tgtLec = parseInt(targetLecture);
+
+    if (srcLec === tgtLec) {
+      return res.status(400).json({ success: false, message: 'Source and Target lectures cannot be the same!' });
+    }
+
+    // Source lecture ke saare records nikalein
+    const sourceRecords = await Attendance.find({
+      branch: branch,
+      subject: new RegExp(`^${cleanSubject}$`, 'i'),
+      dateStr: targetDate,
+      lectureNo: srcLec
+    });
+
+    if (sourceRecords.length === 0) {
+      return res.status(400).json({ success: false, message: `No attendance records found in Lecture ${srcLec} to copy!` });
+    }
+
+    let copiedCount = 0;
+    for (let record of sourceRecords) {
+      const exists = await Attendance.findOne({
+        studentId: record.studentId,
+        branch: branch,
+        subject: new RegExp(`^${cleanSubject}$`, 'i'),
+        dateStr: targetDate,
+        lectureNo: tgtLec
+      });
+
+      if (!exists) {
+        const newRecord = new Attendance({
+          studentId: record.studentId,
+          branch: branch,
+          subject: record.subject,
+          teacherId: teacherId || record.teacherId,
+          dateStr: targetDate,
+          lectureNo: tgtLec,
+          mode: `Copied from Lec ${srcLec}`,
+          deviceId: 'Teacher_Copied'
+        });
+        await newRecord.save();
+        copiedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully copied ${copiedCount} student attendance records from Lecture ${srcLec} to Lecture ${tgtLec}!`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 6. MANUAL OVERRIDE (Teacher Manual Entry)
 app.post('/api/attendance/manual', async (req, res) => {
   try {
-    const { branch, subject, studentId, teacherId, dateStr } = req.body;
+    const { branch, subject, studentId, teacherId, dateStr, lectureNo } = req.body;
     if (!branch || !subject || !studentId) {
       return res.status(400).json({ success: false, message: 'Branch, Subject & Roll Number required!' });
     }
 
     const targetDate = dateStr || getTodayDateString();
     const cleanStudentId = normalizeInput(studentId);
+
+    if (cleanStudentId.length < 12) {
+      return res.status(400).json({ success: false, message: 'Invalid Roll Number! Minimum 12 characters required.' });
+    }
+
     const cleanSubject = subject.trim();
+    const currentLecture = lectureNo ? parseInt(lectureNo) : 1;
 
     const existing = await Attendance.findOne({
       studentId: cleanStudentId,
       branch: branch,
       subject: new RegExp(`^${cleanSubject}$`, 'i'),
-      dateStr: targetDate
+      dateStr: targetDate,
+      lectureNo: currentLecture
     });
 
     if (existing) {
-      return res.status(400).json({ success: false, message: 'Student already marked Present for this date!' });
+      return res.status(400).json({ success: false, message: `Student already marked Present for Lecture ${currentLecture} on this date!` });
     }
 
     try {
@@ -292,27 +386,28 @@ app.post('/api/attendance/manual', async (req, res) => {
         subject: cleanSubject,
         teacherId,
         dateStr: targetDate,
+        lectureNo: currentLecture,
         mode: 'Manual (Teacher)',
         deviceId: 'Teacher_Override'
       });
       await newRecord.save();
     } catch (dbErr) {
       if (dbErr.code === 11000) {
-        return res.status(400).json({ success: false, message: 'Student already marked Present for this date!' });
+        return res.status(400).json({ success: false, message: `Student already marked Present for Lecture ${currentLecture}!` });
       }
       throw dbErr;
     }
 
-    res.json({ success: true, message: `Student ${cleanStudentId} marked Present manually!` });
+    res.json({ success: true, message: `Student ${cleanStudentId} marked Present manually for Lecture ${currentLecture}!` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 6. FETCH RECORDS (Strict Privacy & Clean Unique Order)
+// 7. FETCH RECORDS (Filtered by Query)
 app.get('/api/attendance/query', async (req, res) => {
   try {
-    const { branch, subject, teacherId, role, dateStr } = req.query;
+    const { branch, subject, teacherId, role, dateStr, lectureNo } = req.query;
     let query = {};
 
     if (role === 'TEACHER') {
@@ -329,13 +424,17 @@ app.get('/api/attendance/query', async (req, res) => {
       query.dateStr = dateStr;
     }
 
+    if (lectureNo) {
+      query.lectureNo = parseInt(lectureNo);
+    }
+
     let records = await Attendance.find(query);
 
-    // Front-end Unique Filter
     const uniqueMap = new Map();
     records.forEach(r => {
       const normRoll = normalizeInput(r.studentId);
-      const key = `${r.branch}_${r.subject.toLowerCase()}_${r.dateStr}_${normRoll}`;
+      const lec = r.lectureNo || 1;
+      const key = `${r.branch}_${r.subject.toLowerCase()}_${r.dateStr}_Lec${lec}_${normRoll}`;
       if (!uniqueMap.has(key)) {
         r.studentId = normRoll;
         uniqueMap.set(key, r);
@@ -351,16 +450,17 @@ app.get('/api/attendance/query', async (req, res) => {
   }
 });
 
-// 7. DELETE SHEET
+// 8. DELETE SHEET
 app.delete('/api/attendance/delete-sheet', async (req, res) => {
   try {
-    const { branch, subject, dateStr, teacherId, role } = req.body;
+    const { branch, subject, dateStr, teacherId, role, lectureNo } = req.body;
     let filter = {
       branch: branch,
       subject: new RegExp(`^${subject.trim()}$`, 'i'),
       dateStr: dateStr
     };
 
+    if (lectureNo) filter.lectureNo = parseInt(lectureNo);
     if (role === 'TEACHER' && teacherId) filter.teacherId = teacherId;
 
     const result = await Attendance.deleteMany(filter);
@@ -370,23 +470,25 @@ app.delete('/api/attendance/delete-sheet', async (req, res) => {
   }
 });
 
-// 8. EXPORT CSV
+// 9. EXPORT CSV
 app.get('/api/attendance/export-sheet', async (req, res) => {
   try {
-    const { branch, subject, dateStr, teacherId, role } = req.query;
+    const { branch, subject, dateStr, teacherId, role, lectureNo } = req.query;
     let query = {};
 
     if (role === 'TEACHER' && teacherId) query.teacherId = teacherId;
     if (branch && branch !== 'ALL') query.branch = branch;
     if (subject) query.subject = new RegExp(`^${subject.trim()}$`, 'i');
     if (dateStr) query.dateStr = dateStr;
+    if (lectureNo) query.lectureNo = parseInt(lectureNo);
 
     let records = await Attendance.find(query);
 
     const uniqueMap = new Map();
     records.forEach(r => {
       const normRoll = normalizeInput(r.studentId);
-      const key = `${r.branch}_${r.subject.toLowerCase()}_${r.dateStr}_${normRoll}`;
+      const lec = r.lectureNo || 1;
+      const key = `${r.branch}_${r.subject.toLowerCase()}_${r.dateStr}_Lec${lec}_${normRoll}`;
       if (!uniqueMap.has(key)) {
         r.studentId = normRoll;
         uniqueMap.set(key, r);
@@ -396,10 +498,10 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
     let uniqueRecords = Array.from(uniqueMap.values());
     uniqueRecords.sort((a, b) => a.studentId.localeCompare(b.studentId, undefined, { numeric: true, sensitivity: 'base' }));
 
-    let csv = 'Roll Number,Branch,Subject,Date,Mode,Time\n';
+    let csv = 'Roll Number,Branch,Subject,Date,Lecture No,Mode,Time\n';
     uniqueRecords.forEach(r => {
       const timeStr = new Date(r.timestamp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-      csv += `"${r.studentId}","${r.branch}","${r.subject}","${r.dateStr}","${r.mode}","${timeStr}"\n`;
+      csv += `"${r.studentId}","${r.branch}","${r.subject}","${r.dateStr}","Lec ${r.lectureNo || 1}","${r.mode}","${timeStr}"\n`;
     });
 
     res.setHeader('Content-Type', 'text/csv');
@@ -410,7 +512,7 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
   }
 });
 
-// 9. STUDENT INDIVIDUAL ERP REPORT API (Strictly student's own attended subjects)
+// 10. STUDENT INDIVIDUAL ERP REPORT API (Accurate Lecture-Wise Held & Present Count)
 app.get('/api/attendance/student-report/:studentId', async (req, res) => {
   try {
     const studentId = normalizeInput(req.params.studentId);
@@ -418,7 +520,10 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Valid Roll Number required!' });
     }
 
-    // Sirf is student ke apne records nikalna
+    if (studentId.length < 12) {
+      return res.status(400).json({ success: false, message: 'Invalid Roll Number! Minimum 12 characters required.' });
+    }
+
     const studentRecords = await Attendance.find({ studentId: studentId });
 
     if (studentRecords.length === 0) {
@@ -434,22 +539,31 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
     }
 
     const studentBranch = studentRecords[0].branch;
-
-    // Student ke apne subjects ki unique dates (Held) aur Present count nikalna
     const subjectStats = {};
     
-    // Pehle student ke saare subjects ki list banayein jo usne attend kiye hain
     const studentSubjects = [...new Set(studentRecords.map(r => r.subject))];
 
     for (let sub of studentSubjects) {
-      // Is subject ki total branch me kitni classes chali hain (agar purani class ka count chahiye) ya fir student ke khud ke subjects
-      const presentCount = studentRecords.filter(r => r.subject.toLowerCase() === sub.toLowerCase()).length;
+      const subRecords = studentRecords.filter(r => r.subject.toLowerCase() === sub.toLowerCase());
       
-      // Filhaal student ke apne records ke hisab se Held aur Present
+      const allBranchSubRecords = await Attendance.find({
+        branch: studentBranch,
+        subject: new RegExp(`^${sub.trim()}$`, 'i')
+      });
+
+      const uniqueSessionsSet = new Set();
+      allBranchSubRecords.forEach(r => {
+        uniqueSessionsSet.add(`${r.dateStr}_Lec${r.lectureNo || 1}`);
+      });
+
+      const totalHeld = Math.max(uniqueSessionsSet.size, subRecords.length);
+      const presentCount = subRecords.length;
+      const absentCount = Math.max(0, totalHeld - presentCount);
+
       subjectStats[sub] = {
-        totalHeld: presentCount, // Ya agar branch ke hisab se rakhna ho toh niche wala logic use karein
+        totalHeld: totalHeld,
         present: presentCount,
-        absent: 0
+        absent: absentCount
       };
     }
 
@@ -461,6 +575,7 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
       grandTotalPresent += subjectStats[sub].present;
     });
 
+    const grandTotalAbsent = Math.max(0, grandTotalHeld - grandTotalPresent);
     const overallPercentage = grandTotalHeld > 0 
       ? ((grandTotalPresent / grandTotalHeld) * 100).toFixed(2) 
       : "0.00";
@@ -471,96 +586,10 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
       overallPercentage: overallPercentage,
       grandTotalHeld: grandTotalHeld,
       grandTotalPresent: grandTotalPresent,
-      grandTotalAbsent: 0,
+      grandTotalAbsent: grandTotalAbsent,
       subjectWise: subjectStats
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-// 10. HOD CONSOLIDATED BATCH REPORT API (UPDATED ACCURATE BATCH HELD LOGIC)
-app.get('/api/attendance/hod-report', async (req, res) => {
-  try {
-    const { branch, subject } = req.query;
-    let query = {};
-    if (branch && branch !== 'ALL') query.branch = branch;
-    if (subject && subject.trim() !== '') query.subject = new RegExp(`^${subject.trim()}$`, 'i');
-
-    const allRecords = await Attendance.find(query);
-
-    // Total Unique Sessions Held (Subject + Date)
-    const heldDatesSet = new Set();
-    allRecords.forEach(r => heldDatesSet.add(`${r.subject.toLowerCase()}_${r.dateStr}`));
-    const totalClassSessions = heldDatesSet.size;
-
-    const studentMap = {};
-    allRecords.forEach(rec => {
-      const sId = normalizeInput(rec.studentId);
-      if (!studentMap[sId]) {
-        studentMap[sId] = { studentId: sId, branch: rec.branch, present: 0 };
-      }
-      studentMap[sId].present += 1;
-    });
-
-    const reportArray = Object.values(studentMap).map(st => {
-      const held = totalClassSessions > 0 ? totalClassSessions : st.present;
-      const pct = held > 0 ? ((st.present / held) * 100).toFixed(2) : 0;
-      return {
-        studentId: st.studentId,
-        branch: st.branch,
-        totalHeld: held,
-        present: st.present,
-        absent: Math.max(0, held - st.present),
-        percentage: pct
-      };
-    });
-
-    res.json({ success: true, studentsData: reportArray });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ADD NEW SUBJECT TO EXISTING TEACHER
-app.post('/api/teacher/add-subject', async (req, res) => {
-  try {
-    const { userId, newSubject } = req.body;
-    if (!userId || !newSubject) {
-      return res.status(400).json({ success: false, message: 'Subject name required!' });
-    }
-
-    const user = await User.findOne({ userId });
-    if (!user) return res.status(404).json({ success: false, message: 'User not found!' });
-
-    const trimmedSubj = newSubject.trim();
-    if (!user.subjects.includes(trimmedSubj)) {
-      user.subjects.push(trimmedSubj);
-      await user.save();
-    }
-
-    res.json({ success: true, message: `Subject '${trimmedSubj}' added successfully!`, subjects: user.subjects });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// SEED HOD MASTER ACCOUNT
-async function seedMaster() {
-  const hod = await User.findOne({ userId: 'hod_cs' });
-  if (!hod) {
-    await User.create({
-      userId: 'hod_cs',
-      password: '123',
-      name: 'Dr. Sharma (HOD)',
-      role: 'HOD',
-      branch: 'ALL',
-      subjects: []
-    });
-    console.log('Default HOD Account Created!');
-  }
-}
-seedMaster();
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
