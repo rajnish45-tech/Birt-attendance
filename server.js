@@ -302,7 +302,6 @@ app.post('/api/attendance/copy-lecture', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Source and Target lectures cannot be the same!' });
     }
 
-    // Source lecture ke saare records nikalein
     const sourceRecords = await Attendance.find({
       branch: branch,
       subject: new RegExp(`^${cleanSubject}$`, 'i'),
@@ -512,7 +511,7 @@ app.get('/api/attendance/export-sheet', async (req, res) => {
   }
 });
 
-// 10. STUDENT INDIVIDUAL ERP REPORT API (Accurate Lecture-Wise Held & Present Count)
+// 10. STUDENT INDIVIDUAL ERP REPORT API (Fixed Clean JSON Syntax)
 app.get('/api/attendance/student-report/:studentId', async (req, res) => {
   try {
     const studentId = normalizeInput(req.params.studentId);
@@ -592,4 +591,91 @@ app.get('/api/attendance/student-report/:studentId', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// 11. HOD CONSOLIDATED BATCH REPORT API
+app.get('/api/attendance/hod-report', async (req, res) => {
+  try {
+    const { branch, subject } = req.query;
+    let query = {};
+    if (branch && branch !== 'ALL') query.branch = branch;
+    if (subject && subject.trim() !== '') query.subject = new RegExp(`^${subject.trim()}$`, 'i');
+
+    const allRecords = await Attendance.find(query);
+
+    const heldDatesSet = new Set();
+    allRecords.forEach(r => heldDatesSet.add(`${r.subject.toLowerCase()}_${r.dateStr}_Lec${r.lectureNo || 1}`));
+    const totalClassSessions = heldDatesSet.size;
+
+    const studentMap = {};
+    allRecords.forEach(rec => {
+      const sId = normalizeInput(rec.studentId);
+      if (!studentMap[sId]) {
+        studentMap[sId] = { studentId: sId, branch: rec.branch, present: 0 };
+      }
+      studentMap[sId].present += 1;
+    });
+
+    const reportArray = Object.values(studentMap).map(st => {
+      const held = totalClassSessions > 0 ? totalClassSessions : st.present;
+      const pct = held > 0 ? ((st.present / held) * 100).toFixed(2) : 0;
+      return {
+        studentId: st.studentId,
+        branch: st.branch,
+        totalHeld: held,
+        present: st.present,
+        absent: Math.max(0, held - st.present),
+        percentage: pct
+      };
+    });
+
+    res.json({ success: true, studentsData: reportArray });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ADD NEW SUBJECT TO EXISTING TEACHER
+app.post('/api/teacher/add-subject', async (req, res) => {
+  try {
+    const { userId, newSubject } = req.body;
+    if (!userId || !newSubject) {
+      return res.status(400).json({ success: false, message: 'Subject name required!' });
+    }
+
+    const user = await User.findOne({ userId });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found!' });
+
+    const trimmedSubj = newSubject.trim();
+    if (!user.subjects.includes(trimmedSubj)) {
+      user.subjects.push(trimmedSubj);
+      await user.save();
+    }
+
+    res.json({ success: true, message: `Subject '${trimmedSubj}' added successfully!`, subjects: user.subjects });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+// SEED HOD MASTER ACCOUNT
+async function seedMaster() {
+  const hod = await User.findOne({ userId: 'hod_cs' });
+  if (!hod) {
+    await User.create({
+      userId: 'hod_cs',
+      password: '123',
+      name: 'Dr. Sharma (HOD)',
+      role: 'HOD',
+      branch: 'ALL',
+      subjects: []
+    });
+    console.log('Default HOD Account Created!');
+  }
+}
+seedMaster();
+
+// Render Host Fix (0.0.0.0 Binding)
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
 });
