@@ -191,6 +191,21 @@ app.post('/api/session/start', async (req, res) => {
   }
 });
 
+// 3.1 GET ACTIVE SESSIONS FOR AUTO-FETCHING DROPDOWN
+app.get('/api/session/active', async (req, res) => {
+  try {
+    const { branch } = req.query;
+    if (!branch) {
+      return res.status(400).json({ success: false, message: 'Branch parameter is required!' });
+    }
+
+    const activeSessions = await Session.find({ branch: branch });
+    res.json({ success: true, sessions: activeSessions });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // 4. STUDENT MARK ATTENDANCE (BULLET-PROOF ANTI-PROXY & STRICT 12-DIGIT ROLL VALIDATION)
 app.post('/api/attendance/mark', async (req, res) => {
   try {

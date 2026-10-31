@@ -20,3 +20,24 @@ async function clearData() {
     }
   }
 }
+
+// 🔄 Student Roll Number Lock & Reset Functions (Added securely without changing existing code)
+function lockRollInput() {
+  const rollInput = document.getElementById('studentId');
+  if (rollInput) {
+    rollInput.readOnly = true;
+    const resetContainer = document.getElementById('resetContainer');
+    if (resetContainer) resetContainer.style.display = 'block';
+  }
+}
+
+function resetStudentRoll() {
+  const rollInput = document.getElementById('studentId');
+  if (rollInput) {
+    rollInput.readOnly = false;
+    rollInput.value = '';
+    const resetContainer = document.getElementById('resetContainer');
+    if (resetContainer) resetContainer.style.display = 'none';
+    localStorage.removeItem('lockedStudentId');
+  }
+}

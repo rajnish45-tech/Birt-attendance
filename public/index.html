@@ -41,7 +41,8 @@
   </div>
   
   <label>Branch:</label>
-  <select id="branchSelect">
+  <select id="branchSelect" onchange="fetchActiveSubjects()">
+    <option value="">-- Select Branch --</option>
     <option value="Computer Science">Computer Science</option>
     <option value="Information Technology">Information Technology</option>
     <option value="Electronics">Electronics</option>
@@ -49,11 +50,19 @@
     <option value="Civil">Civil</option>
   </select>
 
-  <label>Subject Name:</label>
-  <input type="text" id="subjectSelect" placeholder="e.g. Java, DBMS">
+  <label>Subject Name (Live Active Sessions):</label>
+  <select id="subjectSelect">
+    <option value="">-- Pehle Branch Select Karein --</option>
+  </select>
 
   <label>Roll Number (Locked after first entry):</label>
   <input type="text" id="studentId" placeholder="e.g. 0173CS251106">
+
+  <div id="resetContainer" style="display: none; margin-top: 6px; margin-bottom: 15px;">
+    <button type="button" onclick="resetStudentRoll()" style="background: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; width: auto;">
+      🔄 Galat Roll No? Reset Karein
+    </button>
+  </div>
 
   <label>4-Digit Passcode:</label>
   <input type="number" id="passcode" placeholder="Enter teacher's session code">
@@ -92,23 +101,73 @@
     if (savedRoll) {
       rollInput.value = savedRoll;
       rollInput.readOnly = true; 
+      const resetContainer = document.getElementById('resetContainer');
+      if (resetContainer) resetContainer.style.display = 'block';
     }
   };
+
+  // Function to auto-fetch live active subjects based on branch selection
+  async function fetchActiveSubjects() {
+    const branch = document.getElementById('branchSelect').value;
+    const subjectSelect = document.getElementById('subjectSelect');
+    
+    subjectSelect.innerHTML = '<option value="">-- Loading Live Subjects... --</option>';
+
+    if (!branch) {
+      subjectSelect.innerHTML = '<option value="">-- Pehle Branch Select Karein --</option>';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/session/active?branch=${encodeURIComponent(branch)}`);
+      const data = await res.json();
+
+      subjectSelect.innerHTML = '<option value="">-- Select Active Subject --</option>';
+
+      if (data.success && data.sessions && data.sessions.length > 0) {
+        data.sessions.forEach(session => {
+          const opt = document.createElement('option');
+          opt.value = session.subject;
+          opt.textContent = `${session.subject} [Lecture ${session.lectureNo || 1}]`;
+          subjectSelect.appendChild(opt);
+        });
+      } else {
+        subjectSelect.innerHTML = '<option value="">-- No Active Session Right Now --</option>';
+      }
+    } catch (err) {
+      console.error('Error fetching active sessions:', err);
+      subjectSelect.innerHTML = '<option value="">-- Failed to load subjects --</option>';
+    }
+  }
+
+  // Roll Number Reset Function
+  function resetStudentRoll() {
+    const rollInput = document.getElementById('studentId');
+    if (rollInput) {
+      rollInput.readOnly = false;
+      rollInput.value = '';
+      const resetContainer = document.getElementById('resetContainer');
+      if (resetContainer) resetContainer.style.display = 'none';
+      localStorage.removeItem('studentRoll');
+    }
+  }
 
   async function markAttendance() {
     let studentId = document.getElementById('studentId').value.trim();
     const enteredCode = document.getElementById('passcode').value.trim();
     const branch = document.getElementById('branchSelect').value;
-    const subject = document.getElementById('subjectSelect').value.trim();
+    const subject = document.getElementById('subjectSelect').value;
     const msg = document.getElementById('statusMsg');
 
     if (!studentId || !enteredCode || !subject) {
-      alert("Kripya Roll Number, Subject aur Passcode sabhi fields bharein!");
+      alert("Kripya Branch, Roll Number, Subject aur Passcode sabhi fields bharein!");
       return;
     }
 
     localStorage.setItem('studentRoll', studentId);
     document.getElementById('studentId').readOnly = true;
+    const resetContainer = document.getElementById('resetContainer');
+    if (resetContainer) resetContainer.style.display = 'block';
 
     if (!navigator.geolocation) {
       alert("Aapka browser Geolocation support nahi karta!");
@@ -159,6 +218,8 @@
 
     localStorage.setItem('studentRoll', studentId);
     document.getElementById('studentId').readOnly = true;
+    const resetContainer = document.getElementById('resetContainer');
+    if (resetContainer) resetContainer.style.display = 'block';
 
     msg.style.color = '#0288d1';
     msg.innerText = "Loading your ERP attendance report...";
