@@ -38,6 +38,7 @@
     <button id="tabDailyBtn" class="tab-btn active" onclick="switchTab('daily')">📅 Daily Attendance Logs</button>
     <button id="tabErpBtn" class="tab-btn" onclick="switchTab('erp')">📊 Overall Batch ERP Percentage</button>
     <button id="tabSearchBtn" class="tab-btn" onclick="switchTab('search')">🔍 Search Student by Roll No</button>
+    <button id="tabApprovalBtn" class="tab-btn" onclick="switchTab('approval')">🛡️ Pending Teacher Approvals</button>
   </div>
 
   <!-- VIEW 1: DAILY ATTENDANCE LOGS -->
@@ -109,6 +110,26 @@
     <div id="studentSearchResult"></div>
   </div>
 
+  <!-- VIEW 4: PENDING TEACHER APPROVALS -->
+  <div id="approvalView" class="card" style="display: none;">
+    <h3>🛡️ Pending Teacher Registration Approvals</h3>
+    <p style="font-size: 13px; color: #cbd5e0;">Jab tak aap kisi new teacher registration ko allow nahi karte, tab tak woh teacher dashboard mein login nahi kar sakte:</p>
+    <div id="noPendingMsg" style="color: #cbd5e0; margin-top: 15px;">No pending teacher requests.</div>
+    <table id="pendingTable" style="display: none; width: 100%; border-collapse: collapse; margin-top: 15px; background: #1a202c; font-size: 14px; text-align: center;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>User ID</th>
+          <th>Branch</th>
+          <th>Subjects</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="pendingTeachersList"></tbody>
+    </table>
+  </div>
+
 </div>
 
 <script>
@@ -126,10 +147,12 @@
     document.getElementById('dailyView').style.display = 'none';
     document.getElementById('erpView').style.display = 'none';
     document.getElementById('searchView').style.display = 'none';
+    document.getElementById('approvalView').style.display = 'none';
 
     document.getElementById('tabDailyBtn').classList.remove('active');
     document.getElementById('tabErpBtn').classList.remove('active');
     document.getElementById('tabSearchBtn').classList.remove('active');
+    document.getElementById('tabApprovalBtn').classList.remove('active');
 
     if (tabName === 'daily') {
       document.getElementById('dailyView').style.display = 'block';
@@ -142,6 +165,10 @@
     } else if (tabName === 'search') {
       document.getElementById('searchView').style.display = 'block';
       document.getElementById('tabSearchBtn').classList.add('active');
+    } else if (tabName === 'approval') {
+      document.getElementById('approvalView').style.display = 'block';
+      document.getElementById('tabApprovalBtn').classList.add('active');
+      loadPendingTeachers();
     }
   }
 
@@ -296,6 +323,70 @@
 
     } catch (e) {
       resultDiv.innerHTML = `<p style='color:#f56565;'>Server connection error!</p>`;
+    }
+  }
+
+  // 4. Fetch Pending Teacher Registration Approvals
+  async function loadPendingTeachers() {
+    try {
+      const res = await fetch('/api/hod/pending-teachers');
+      const data = await res.json();
+
+      if (data.success) {
+        const teachers = data.teachers;
+        const table = document.getElementById('pendingTable');
+        const tbody = document.getElementById('pendingTeachersList');
+        const noMsg = document.getElementById('noPendingMsg');
+
+        tbody.innerHTML = '';
+
+        if (!teachers || teachers.length === 0) {
+          table.style.display = 'none';
+          noMsg.style.display = 'block';
+        } else {
+          table.style.display = 'table';
+          noMsg.style.display = 'none';
+
+          teachers.forEach((t, idx) => {
+            const subjectsStr = Array.isArray(t.subjects) ? t.subjects.join(', ') : '';
+            tbody.innerHTML += `
+              <tr>
+                <td>${idx + 1}</td>
+                <td><b>${t.name}</b></td>
+                <td>${t.userId}</td>
+                <td>${t.branch}</td>
+                <td>${subjectsStr}</td>
+                <td>
+                  <button style="background: #38a169; color: white;" onclick="approveTeacher('${t.userId}')">Allow / Approve</button>
+                </td>
+              </tr>
+            `;
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Error loading pending teachers:", err);
+    }
+  }
+
+  // 5. Approve Teacher Account
+  async function approveTeacher(userId) {
+    if (!confirm(`Kya aap ${userId} ko teacher access dena chahte hain?`)) return;
+
+    try {
+      const res = await fetch('/api/hod/approve-teacher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      const data = await res.json();
+
+      alert(data.message);
+      if (data.success) {
+        loadPendingTeachers();
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
     }
   }
 

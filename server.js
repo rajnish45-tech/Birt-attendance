@@ -30,7 +30,8 @@ const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
   role: { type: String, enum: ['TEACHER', 'HOD'], default: 'TEACHER' },
   branch: { type: String, required: true },
-  subjects: [String]
+  subjects: [String],
+  isApproved: {type: Boolean, default: false}
 });
 
 // 2. Active Session Schema (With Lecture Number & 10m TTL)
@@ -114,7 +115,8 @@ app.post('/api/auth/register', async (req, res) => {
       name: name.trim(),
       role: 'TEACHER',
       branch: branch.trim(),
-      subjects: subjectList
+      subjects: subjectList,
+      isApproved: flase
     });
     await newUser.save();
 
@@ -131,10 +133,14 @@ app.post('/api/auth/login', async (req, res) => {
     if (!userId || !password) {
       return res.status(400).json({ success: false, message: 'UserId and Password required!' });
     }
-
     const user = await User.findOne({ userId: userId.trim() });
     if (!user || user.password !== password.trim()) {
       return res.status(401).json({ success: false, message: 'Invalid Credentials!' });
+    }
+
+    // HOD Approval Check for Teachers
+    if(user.role === 'TEACHER' && !user.isApproved){
+      return res.status(403).json({success: false, message: 'Your account is pending HOD approval! Please contact HOD.'});
     }
 
     res.json({
@@ -650,6 +656,38 @@ app.get('/api/attendance/hod-report', async (req, res) => {
   }
 });
 
+// 12. HOD: GET PENDING TEACHERS LIST
+app.get('/api/hod/pending-teachers', async (req, res) => {
+  try {
+    const pendingTeachers = await User.find({ role: 'TEACHER', isApproved: false });
+    res.json({ success: true, teachers: pendingTeachers });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 13. HOD: APPROVE TEACHER ACCOUNT
+app.post('/api/hod/approve-teacher', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'Teacher UserId is required!' });
+    }
+
+    const teacher = await User.findOne({ userId: userId.trim() });
+    if (!teacher) {
+      return res.status(404).json({ success: false, message: 'Teacher not found!' });
+    }
+
+    teacher.isApproved = true;
+    await teacher.save();
+
+    res.json({ success: true, message: `Teacher ${teacher.name} (${teacher.userId}) approved successfully!` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ADD NEW SUBJECT TO EXISTING TEACHER
 app.post('/api/teacher/add-subject', async (req, res) => {
   try {
@@ -682,7 +720,8 @@ async function seedMaster() {
       name: 'Dr. Sharma (HOD)',
       role: 'HOD',
       branch: 'ALL',
-      subjects: []
+      subjects: [],
+      isApproved: true,  // HOD is always approved
     });
     console.log('Default HOD Account Created!');
   }
