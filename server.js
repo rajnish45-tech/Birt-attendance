@@ -116,7 +116,7 @@ app.post('/api/auth/register', async (req, res) => {
       role: 'TEACHER',
       branch: branch.trim(),
       subjects: subjectList,
-      isApproved: flase
+      isApproved: false,
     });
     await newUser.save();
 
